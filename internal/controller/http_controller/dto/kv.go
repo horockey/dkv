@@ -16,15 +16,9 @@ type KV struct {
 	ModifiedUnix int64  `json:"modified"`
 }
 
-type mockStringer string
-
-func (m mockStringer) String() string {
-	return string(m)
-}
-
 func KVToModel[K fmt.Stringer, V any](kv KV) (model.KVPair[K, V], error) {
 	res := model.KVPair[K, V]{
-		Key:      fmt.Stringer((mockStringer(kv.Key))).(K),
+		Key:      fmt.Stringer((model.MockStringer(kv.Key))).(K),
 		Modified: time.Unix(kv.ModifiedUnix, 0),
 	}
 

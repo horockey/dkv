@@ -15,12 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type mockStringer string
-
-func (m mockStringer) String() string {
-	return string(m)
-}
-
 func setupDB(t *testing.T) (*badger.DB, func()) {
 	dir := t.TempDir()
 
@@ -38,9 +32,9 @@ func Test_Get_KeyNotFound(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[mockStringer, any](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, any](db)
 
-	key := mockStringer("nonexistent_key")
+	key := model.MockStringer("nonexistent_key")
 
 	kv, err := repo.Get(key)
 
@@ -53,11 +47,11 @@ func Test_Get_Success(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[mockStringer, string](db)
-	key := mockStringer("test_key")
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	key := model.MockStringer("test_key")
 	value := "test_value"
 
-	err := repo.AddOrUpdate(model.KVPair[mockStringer, string]{
+	err := repo.AddOrUpdate(model.KVPair[model.MockStringer, string]{
 		Key:      key,
 		Value:    value,
 		Modified: time.Now(),
@@ -76,8 +70,8 @@ func Test_GetNoValue_KeyNotFound(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[mockStringer, any](db)
-	key := mockStringer("nonexistent_key")
+	repo := badger_local_kv_pairs.New[model.MockStringer, any](db)
+	key := model.MockStringer("nonexistent_key")
 
 	kv, err := repo.GetNoValue(key)
 
@@ -90,11 +84,11 @@ func Test_GetNoValue_Success(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[mockStringer, string](db)
-	key := mockStringer("test_key")
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	key := model.MockStringer("test_key")
 	value := "test_value"
 
-	err := repo.AddOrUpdate(model.KVPair[mockStringer, string]{
+	err := repo.AddOrUpdate(model.KVPair[model.MockStringer, string]{
 		Key:      key,
 		Value:    value,
 		Modified: time.Now(),
@@ -113,9 +107,9 @@ func Test_AddOrUpdate(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[mockStringer, string](db)
-	key := mockStringer("test_key")
-	kv := model.KVPair[mockStringer, string]{
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	key := model.MockStringer("test_key")
+	kv := model.KVPair[model.MockStringer, string]{
 		Key:   key,
 		Value: "test_value",
 	}
@@ -142,11 +136,11 @@ func Test_Remove(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[mockStringer, string](db)
-	key := mockStringer("test_key")
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	key := model.MockStringer("test_key")
 	value := "test_value"
 
-	err := repo.AddOrUpdate(model.KVPair[mockStringer, string]{
+	err := repo.AddOrUpdate(model.KVPair[model.MockStringer, string]{
 		Key:      key,
 		Value:    value,
 		Modified: time.Now(),

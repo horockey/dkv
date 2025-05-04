@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-resty/resty/v2"
+	controller_dto "github.com/horockey/dkv/internal/controller/http_controller/dto"
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
-	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs/http_remote_kv_pairs/dto"
 	"github.com/horockey/dkv/internal/model"
 )
 
@@ -16,6 +17,18 @@ var _ remote_kv_pairs.Gateway[fmt.Stringer, any] = &httpRemoteKVPairs[fmt.String
 
 type httpRemoteKVPairs[K fmt.Stringer, V any] struct {
 	cl *resty.Client
+}
+
+func New[K fmt.Stringer, V any](
+	servicePort int,
+	apiKey string,
+) *httpRemoteKVPairs[K, V] {
+	return &httpRemoteKVPairs[K, V]{
+		cl: resty.New().
+			SetPathParam("port", strconv.Itoa(servicePort)).
+			SetHeader("X-Api-Key", apiKey).
+			SetRetryCount(0),
+	}
 }
 
 func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key K) (model.KVPair[K, V], error) {
@@ -31,12 +44,12 @@ func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key
 		return model.KVPair[K, V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
-	dtoKV := dto.KV{}
+	dtoKV := controller_dto.KV{}
 	if err := json.Unmarshal(resp.Body(), &dtoKV); err != nil {
 		return model.KVPair[K, V]{}, fmt.Errorf("unmarshaling json: %w", err)
 	}
 
-	kv, err := dto.KVToModel[K, V](dtoKV)
+	kv, err := controller_dto.KVToModel[K, V](dtoKV)
 	if err != nil {
 		return model.KVPair[K, V]{}, fmt.Errorf("converting dto kv to model: %w", err)
 	}
@@ -58,12 +71,12 @@ func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname stri
 		return model.KVPair[K, V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
-	dtoKV := dto.KV{}
+	dtoKV := controller_dto.KV{}
 	if err := json.Unmarshal(resp.Body(), &dtoKV); err != nil {
 		return model.KVPair[K, V]{}, fmt.Errorf("unmarshaling json: %w", err)
 	}
 
-	kv, err := dto.KVToModel[K, V](dtoKV)
+	kv, err := controller_dto.KVToModel[K, V](dtoKV)
 	if err != nil {
 		return model.KVPair[K, V]{}, fmt.Errorf("converting dto kv to model: %w", err)
 	}
@@ -72,7 +85,7 @@ func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname stri
 }
 
 func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(ctx context.Context, hostname string, kvp model.KVPair[K, V]) error {
-	dtoKVP, err := dto.NewKV(kvp)
+	dtoKVP, err := controller_dto.NewKV(kvp)
 	if err != nil {
 		return fmt.Errorf("converting model kv to dto: %w", err)
 	}

@@ -11,4 +11,6 @@ type Repository[K fmt.Stringer, V any] interface {
 	GetNoValue(K) (model.KVPair[K, V], error)
 	AddOrUpdate(model.KVPair[K, V]) error
 	Remove(K) error
+	CheckTombstone(K) (ts int64, err error)
+	GetAllNoValue() ([]model.KVPair[K, V], error)
 }
