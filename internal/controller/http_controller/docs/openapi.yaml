@@ -1,0 +1,119 @@
+openapi: 3.0.0
+
+info:
+  title: DKV node REST API
+  version: 1.0.0
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /kv/{key}:
+    get:
+      summary: Получение КЗ по ключу.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: no-value
+          in: query
+          required: false
+          description: Не включать в тело ответа значение КЗ.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KV"
+        400:
+          $ref: "#/components/responses/400"
+        403:
+          $ref: "#/components/responses/403"
+        500:
+          $ref: "#/components/responses/500"
+
+    delete:
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        200:
+          description: OK
+        400:
+          $ref: "#/components/responses/400"
+        403:
+          $ref: "#/components/responses/403"
+        500:
+          $ref: "#/components/responses/500"
+
+  /kv:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKVRequest"
+      responses:
+        200:
+          description: OK
+        400:
+          $ref: "#/components/responses/400"
+        403:
+          $ref: "#/components/responses/403"
+        500:
+          $ref: "#/components/responses/500"
+
+components:
+  schemas:
+    KV:
+      type: object
+      required: [key, value, modified]
+      properties:
+        key:
+          type: string
+          minLength: 1
+        value:
+          type: string
+          minLength: 1
+          description: Массив байт, приведенный к base64.
+        modified:
+          type: number
+          format: integer
+          description: Временная метка последнего изменения.
+
+    ErrorResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Сообщение об ошибке.
+  responses:
+    400:
+      description: Некорректные данные в запросе.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    403:
+      description: Отказано в доступе.
+    500:
+      description: Внутренняя ошибка сервера.
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
