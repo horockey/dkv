@@ -11,71 +11,88 @@ import (
 
 	"github.com/dgraph-io/badger"
 	"github.com/horockey/dkv/internal/controller/http_controller"
+	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs/http_remote_kv_pairs"
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
+	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs/badger_local_kv_pairs"
 	"github.com/horockey/go-toolbox/options"
 	"github.com/rs/zerolog"
 )
 
-type Discovery = model.Discovery
+type (
+	Discovery = model.Discovery
+)
+
+type Controller interface{ Start(context.Context) error }
 
 type Client[K fmt.Stringer, V any] struct {
 	*processor.Processor[K, V]
-	ctrl *http_controller.HttpController[K, V]
+	ctrl Controller
 }
 
-type createClientParams struct {
+type createClientParams[K fmt.Stringer, V any] struct {
 	badgerDir     string
 	servicePort   int
 	weight        uint
 	replicas      uint8
 	revertTimeout time.Duration
 	logger        zerolog.Logger
+
+	localRepo  local_kv_pairs.Repository[K, V]
+	remoteRepo remote_kv_pairs.Gateway[K, V]
+	controller Controller
 }
 
-var defaultCreateClientParams = createClientParams{
-	badgerDir:     "./badger",
-	servicePort:   7000,
-	weight:        1,
-	replicas:      2,
-	revertTimeout: time.Second * 10,
-	logger: zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.RFC3339,
-	}).With().
-		Timestamp().
-		Str("scope", "dkv_client").
-		Logger(),
+func defaultCreateClientParams[K fmt.Stringer, V any]() createClientParams[K, V] {
+	return createClientParams[K, V]{
+		badgerDir:     "./badger",
+		servicePort:   7000,
+		weight:        1,
+		replicas:      2,
+		revertTimeout: time.Second * 10,
+		logger: zerolog.New(zerolog.ConsoleWriter{
+			Out:        os.Stdout,
+			TimeFormat: time.RFC3339,
+		}).With().
+			Timestamp().
+			Str("scope", "dkv_client").
+			Logger(),
+	}
 }
 
 func New[K fmt.Stringer, V any](
 	apiKey string,
 	hostname string,
 	discovery Discovery,
-	opts ...options.Option[createClientParams],
+	opts ...options.Option[createClientParams[K, V]],
 ) (*Client[K, V], error) {
-	params := defaultCreateClientParams
+	params := defaultCreateClientParams[K, V]()
 	if err := options.ApplyOptions(&params, opts...); err != nil {
 		return nil, fmt.Errorf("applying opts: %w", err)
 	}
 
-	if err := os.MkdirAll(params.badgerDir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("creating badger dir: %w", err)
+	if params.localRepo == nil {
+		if err := os.MkdirAll(params.badgerDir, os.ModePerm); err != nil {
+			return nil, fmt.Errorf("creating badger dir: %w", err)
+		}
+
+		badgerDB, err := badger.Open(badger.DefaultOptions(params.badgerDir))
+		if err != nil {
+			return nil, fmt.Errorf("creating badger DB: %w", err)
+		}
+
+		params.localRepo = badger_local_kv_pairs.New[K, V](badgerDB)
 	}
 
-	badgerDB, err := badger.Open(badger.DefaultOptions(params.badgerDir))
-	if err != nil {
-		return nil, fmt.Errorf("creating badger DB: %w", err)
+	if params.remoteRepo == nil {
+		params.remoteRepo = http_remote_kv_pairs.New[K, V](params.servicePort, apiKey)
 	}
 
-	localStorage := badger_local_kv_pairs.New[K, V](badgerDB)
-
-	remoteStorage := http_remote_kv_pairs.New[K, V](params.servicePort, apiKey)
 	proc := processor.New(
-		localStorage,
-		remoteStorage,
+		params.localRepo,
+		params.remoteRepo,
 		hostname,
 		params.weight,
 		discovery,
@@ -84,14 +101,16 @@ func New[K fmt.Stringer, V any](
 		params.logger,
 	)
 
-	ctrl := http_controller.New(
-		"0.0.0.0:"+strconv.Itoa(params.servicePort),
-		apiKey,
-		proc,
-		params.logger.With().Str("subscope", "http_controller").Logger(),
-	)
+	if params.controller == nil {
+		params.controller = http_controller.New(
+			"0.0.0.0:"+strconv.Itoa(params.servicePort),
+			apiKey,
+			proc,
+			params.logger.With().Str("subscope", "http_controller").Logger(),
+		)
+	}
 
-	return &Client[K, V]{Processor: proc, ctrl: ctrl}, nil
+	return &Client[K, V]{Processor: proc, ctrl: params.controller}, nil
 }
 
 func (cl *Client[K, V]) Start(ctx context.Context) error {
