@@ -14,14 +14,16 @@ import (
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
 	"github.com/horockey/go-toolbox/http_helpers"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
 
 type HttpController[K fmt.Stringer, V any] struct {
-	serv   *http.Server
-	apiKey string
-	proc   *processor.Processor[K, V]
-	logger zerolog.Logger
+	serv    *http.Server
+	apiKey  string
+	proc    *processor.Processor[K, V]
+	logger  zerolog.Logger
+	metrics *metrics
 }
 
 func New[K fmt.Stringer, V any](
@@ -37,9 +39,10 @@ func New[K fmt.Stringer, V any](
 				w.WriteHeader(http.StatusNotImplemented)
 			}),
 		},
-		apiKey: apiKey,
-		proc:   proc,
-		logger: logger,
+		apiKey:  apiKey,
+		proc:    proc,
+		logger:  logger,
+		metrics: newMetrics(),
 	}
 
 	router := mux.NewRouter()
@@ -55,6 +58,10 @@ func New[K fmt.Stringer, V any](
 	ctrl.serv.Handler = router
 
 	return nil
+}
+
+func (ctrl *HttpController[K, V]) Metrics() []prometheus.Collector {
+	return ctrl.metrics.list()
 }
 
 func (ctrl *HttpController[K, V]) Start(ctx context.Context) (resErr error) {

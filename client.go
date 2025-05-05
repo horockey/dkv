@@ -25,8 +25,6 @@ type (
 	Discovery = model.Discovery
 )
 
-type Controller interface{ Start(context.Context) error }
-
 type Client[K fmt.Stringer, V any] struct {
 	*processor.Processor[K, V]
 	ctrl Controller

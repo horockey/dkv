@@ -7,6 +7,7 @@ import (
 )
 
 type Repository[K fmt.Stringer, V any] interface {
+	model.MetricsProvider
 	Get(K) (model.KVPair[K, V], error)
 	GetNoValue(K) (model.KVPair[K, V], error)
 	AddOrUpdate(model.KVPair[K, V]) error

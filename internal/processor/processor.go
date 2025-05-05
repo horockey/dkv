@@ -17,6 +17,7 @@ import (
 	"github.com/samber/lo"
 )
 
+// TODO: add metrics
 type Processor[K fmt.Stringer, V any] struct {
 	localStorage  local_kv_pairs.Repository[K, V]
 	remoteStorage remote_kv_pairs.Gateway[K, V]
