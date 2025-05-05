@@ -325,6 +325,14 @@ func (pr *Processor[K, V]) moveExtraKvpsToRemotes(ctx context.Context) {
 			continue
 		}
 
+		if err := pr.localStorage.Remove(kvp.Key); err != nil {
+			pr.Logger.
+				Error().
+				Err(fmt.Errorf("removing from local storage: %w", err)).
+				Send()
+			continue
+		}
+
 	}
 }
 
