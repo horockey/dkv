@@ -10,6 +10,7 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var _ local_kv_pairs.Repository[fmt.Stringer, any] = &badgerLocalKVPairs[fmt.Stringer, any]{}
@@ -22,15 +23,41 @@ const (
 type badgerLocalKVPairs[K fmt.Stringer, V any] struct {
 	db            *badger.DB
 	tombstonesTTL time.Duration
+	metrics       *metrics
 }
 
-func New[K fmt.Stringer, V any](db *badger.DB) *badgerLocalKVPairs[K, V] {
+func New[K fmt.Stringer, V any](
+	db *badger.DB,
+	tombstonesTTL time.Duration,
+) *badgerLocalKVPairs[K, V] {
 	return &badgerLocalKVPairs[K, V]{
-		db: db,
+		db:            db,
+		tombstonesTTL: tombstonesTTL,
+		metrics:       newMetrics(db),
 	}
 }
 
-func (repo *badgerLocalKVPairs[K, V]) Get(key K) (model.KVPair[K, V], error) {
+func (repo *badgerLocalKVPairs[K, V]) Metrics() []prometheus.Collector {
+	return repo.metrics.list()
+}
+
+func (repo *badgerLocalKVPairs[K, V]) Get(key K) (resKV model.KVPair[K, V], resErr error) {
+	defer func(ts time.Time) {
+		repo.metrics.requestsCnt.Inc()
+		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch {
+		case resErr == nil:
+			repo.metrics.successProcessCnt.Inc()
+			repo.metrics.keyHitsCnt.Inc()
+		case errors.Is(resErr, badger.ErrKeyNotFound):
+			repo.metrics.keyMissesCnt.Inc()
+			fallthrough
+		default:
+			repo.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	res := model.KVPair[K, V]{
 		Key: key,
 	}
@@ -81,7 +108,23 @@ func (repo *badgerLocalKVPairs[K, V]) Get(key K) (model.KVPair[K, V], error) {
 	return res, nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (model.KVPair[K, V], error) {
+func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V], resErr error) {
+	defer func(ts time.Time) {
+		repo.metrics.requestsCnt.Inc()
+		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch {
+		case resErr == nil:
+			repo.metrics.successProcessCnt.Inc()
+			repo.metrics.keyHitsCnt.Inc()
+		case errors.Is(resErr, badger.ErrKeyNotFound):
+			repo.metrics.keyMissesCnt.Inc()
+			fallthrough
+		default:
+			repo.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	res := model.KVPair[K, V]{
 		Key: key,
 	}
@@ -123,54 +166,97 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (model.KVPair[K, V], err
 
 // Updates kvp.
 // If repo has newer version of it, will return local_kv_pairs.KvTooOldError.
-func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V]) error {
+func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf model.Merger[K, V]) (resErr error) {
+	defer func(ts time.Time) {
+		repo.metrics.requestsCnt.Inc()
+		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch {
+		case resErr == nil:
+			repo.metrics.successProcessCnt.Inc()
+			repo.metrics.repoSizeItemsGauge.Inc()
+		default:
+			repo.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	if err := repo.db.Update(func(txn *badger.Txn) error {
+		var inRepoTs time.Time
 		modItem, err := txn.Get([]byte(kvp.Key.String() + modSuffix))
-		var modUnix int64
+
+		switch {
+		case errors.Is(err, badger.ErrKeyNotFound):
+			break
+		case err == nil:
+			var modUnix int64
+
+			if err := modItem.Value(func(val []byte) error {
+				if err := gob.
+					NewDecoder(bytes.NewBuffer(val)).
+					Decode(&modUnix); err != nil {
+					return fmt.Errorf("decoding gob: %w", err)
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("getting value of modItem: %w", err)
+			}
+
+			inRepoTs = time.Unix(modUnix, 0)
+			if inRepoTs.After(kvp.Modified) {
+				return local_kv_pairs.KvTooOldError{
+					Key:         kvp.Key.String(),
+					InsertingTs: kvp.Modified,
+					InRepoTs:    inRepoTs,
+				}
+			}
+		}
+
+		item, err := txn.Get([]byte(kvp.Key.String()))
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
-				goto SET
+				return local_kv_pairs.KeyNotFoundError{Key: kvp.Key.String()}
 			}
-			return fmt.Errorf("getting modItem: %w", err)
+			return fmt.Errorf("getting item: %w", err)
 		}
 
-		if inRepoTs := time.Unix(modUnix, 0); inRepoTs.After(kvp.Modified) {
-			return local_kv_pairs.KvTooOldError{
-				Key:         kvp.Key.String(),
-				InsertingTs: kvp.Modified,
-				InRepoTs:    inRepoTs,
-			}
-		}
-
-		if err := modItem.Value(func(val []byte) error {
+		var oldValue V
+		if err := item.Value(func(val []byte) error {
 			if err := gob.
 				NewDecoder(bytes.NewBuffer(val)).
-				Decode(&modUnix); err != nil {
+				Decode(&oldValue); err != nil {
 				return fmt.Errorf("decoding gob: %w", err)
 			}
 			return nil
 		}); err != nil {
-			return fmt.Errorf("getting value of modItem: %w", err)
+			return fmt.Errorf("getting value: %w", err)
 		}
 
-	SET:
+		mergedKvp := mf.Merge(
+			model.KVPair[K, V]{
+				Key:      kvp.Key,
+				Value:    oldValue,
+				Modified: inRepoTs,
+			},
+			kvp,
+		)
+
 		buf := bytes.NewBuffer(nil)
 		if err := gob.
 			NewEncoder(buf).
-			Encode(kvp.Value); err != nil {
+			Encode(mergedKvp.Value); err != nil {
 			return fmt.Errorf("encoding gob: %w", err)
 		}
 
 		val := bytes.Clone(buf.Bytes())
 		buf.Reset()
-		if err := txn.Set([]byte(kvp.Key.String()), val); err != nil {
+		if err := txn.Set([]byte(mergedKvp.Key.String()), val); err != nil {
 			return fmt.Errorf("setting item to db: %w", err)
 		}
 
-		if err := gob.NewEncoder(buf).Encode(kvp.Modified.Unix()); err != nil {
+		if err := gob.NewEncoder(buf).Encode(mergedKvp.Modified.Unix()); err != nil {
 			return fmt.Errorf("encoding modItem: %w", err)
 		}
-		if err := txn.Set([]byte(kvp.Key.String()+modSuffix), buf.Bytes()); err != nil {
+		if err := txn.Set([]byte(mergedKvp.Key.String()+modSuffix), buf.Bytes()); err != nil {
 			return fmt.Errorf("setting modItem to db: %w", err)
 		}
 
@@ -182,7 +268,20 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V]) error 
 	return nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) Remove(key K) error {
+func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
+	defer func(ts time.Time) {
+		repo.metrics.requestsCnt.Inc()
+		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch {
+		case resErr == nil:
+			repo.metrics.successProcessCnt.Inc()
+			repo.metrics.repoSizeItemsGauge.Dec()
+		default:
+			repo.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	if err := repo.db.Update(func(txn *badger.Txn) error {
 		if err := txn.Delete([]byte(key.String())); err != nil {
 			return fmt.Errorf("deleting item: %w", err)
@@ -197,7 +296,12 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) error {
 			return fmt.Errorf("encoding gob tombstone: %w", err)
 		}
 
-		if err := txn.Set([]byte(key.String()+tombstoneSuffix), buf.Bytes()); err != nil {
+		e := badger.Entry{
+			Key:   []byte(key.String() + tombstoneSuffix),
+			Value: buf.Bytes(),
+		}
+
+		if err := txn.SetEntry(e.WithTTL(repo.tombstonesTTL)); err != nil {
 			return fmt.Errorf("setting tombstone: %w", err)
 		}
 
@@ -210,6 +314,22 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) error {
 }
 
 func (repo *badgerLocalKVPairs[K, V]) CheckTombstone(key K) (ts int64, resErr error) {
+	defer func(ts time.Time) {
+		repo.metrics.requestsCnt.Inc()
+		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch {
+		case resErr == nil:
+			repo.metrics.successProcessCnt.Inc()
+			repo.metrics.keyHitsCnt.Inc()
+		case errors.Is(resErr, badger.ErrKeyNotFound):
+			repo.metrics.keyMissesCnt.Inc()
+			fallthrough
+		default:
+			repo.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	if err := repo.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key.String() + tombstoneSuffix))
 		if err != nil {
@@ -231,7 +351,19 @@ func (repo *badgerLocalKVPairs[K, V]) CheckTombstone(key K) (ts int64, resErr er
 	return ts, nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() ([]model.KVPair[K, V], error) {
+func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, V], resErr error) {
+	defer func(ts time.Time) {
+		repo.metrics.requestsCnt.Inc()
+		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch {
+		case resErr == nil:
+			repo.metrics.successProcessCnt.Inc()
+		default:
+			repo.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	res := []model.KVPair[K, V]{}
 
 	err := repo.db.View(func(txn *badger.Txn) error {

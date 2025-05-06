@@ -20,11 +20,13 @@ import (
 // TODO: add metrics
 type Processor[K fmt.Stringer, V any] struct {
 	localStorage  local_kv_pairs.Repository[K, V]
+	merger        model.Merger[K, V]
 	remoteStorage remote_kv_pairs.Gateway[K, V]
 	hostname      string
 	weight        uint
 	discovery     model.Discovery
 	hashRing      *hashringx.HashRing
+	hashFunc      hashringx.HashFunc
 	replicas      uint8
 	revertTimeout time.Duration
 	Logger        zerolog.Logger
@@ -32,20 +34,24 @@ type Processor[K fmt.Stringer, V any] struct {
 
 func New[K fmt.Stringer, V any](
 	localStorage local_kv_pairs.Repository[K, V],
+	merger model.Merger[K, V],
 	remoteStorage remote_kv_pairs.Gateway[K, V],
 	hostname string,
 	weight uint,
 	discovery model.Discovery,
+	hashFunc hashringx.HashFunc,
 	replicas uint8,
 	revertTimeout time.Duration,
 	logger zerolog.Logger,
 ) *Processor[K, V] {
 	return &Processor[K, V]{
 		localStorage:  localStorage,
+		merger:        merger,
 		remoteStorage: remoteStorage,
 		hostname:      hostname,
 		weight:        weight,
 		discovery:     discovery,
+		hashFunc:      hashFunc,
 		replicas:      replicas,
 		revertTimeout: revertTimeout,
 		Logger:        logger,
@@ -63,12 +69,15 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 		return fmt.Errorf("geting all nodes from discovery: %w", err)
 	}
 
-	pr.hashRing = hashringx.NewWithWeights(lo.SliceToMap(
-		allNodes,
-		func(el model.Node) (string, int) {
-			return el.Hostname, parseWeightFromMeta(el.Meta)
-		},
-	))
+	pr.hashRing = hashringx.NewWithHashAndWeights(
+		lo.SliceToMap(
+			allNodes,
+			func(el model.Node) (string, int) {
+				return el.Hostname, parseWeightFromMeta(el.Meta)
+			},
+		),
+		pr.hashFunc,
+	)
 
 	err = pr.discovery.Register(
 		ctx,
@@ -184,7 +193,7 @@ func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (res
 	}
 
 	defer revertOnErr(append(replicas, owner))
-	if err := pr.localStorage.AddOrUpdate(kvp); err != nil {
+	if err := pr.localStorage.AddOrUpdate(kvp, pr.merger); err != nil {
 		return fmt.Errorf("setting to local repo: %w", err)
 	}
 

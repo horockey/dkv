@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-var defaultHashFunc = func() HashFunc {
+var DefaultHashFunc = func() HashFunc {
 	hashFunc, err := NewHash(md5.New).Use(NewInt64PairHashKey)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create defaultHashFunc: %s", err.Error()))
@@ -43,7 +43,7 @@ func (k Uint32HashKey) Less(other HashKey) bool {
 }
 
 func New(nodes []string) *HashRing {
-	return NewWithHash(nodes, defaultHashFunc)
+	return NewWithHash(nodes, DefaultHashFunc)
 }
 
 func NewWithHash(
@@ -62,7 +62,7 @@ func NewWithHash(
 }
 
 func NewWithWeights(weights map[string]int) *HashRing {
-	return NewWithHashAndWeights(weights, defaultHashFunc)
+	return NewWithHashAndWeights(weights, DefaultHashFunc)
 }
 
 func NewWithHashAndWeights(

@@ -7,6 +7,7 @@ import (
 
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
+	"github.com/horockey/dkv/pkg/hashringx"
 	"github.com/horockey/go-toolbox/options"
 	"github.com/rs/zerolog"
 )
@@ -71,11 +72,47 @@ func WithRevertTimeout[K fmt.Stringer, V any](to time.Duration) options.Option[c
 	}
 }
 
+// Sets custom tombstone TTL.
+// Default is 1 day.
+func WithLocalRepoTombstonesTTL[K fmt.Stringer, V any](ttl time.Duration) options.Option[createClientParams[K, V]] {
+	return func(target *createClientParams[K, V]) error {
+		if ttl <= 0 {
+			return fmt.Errorf("ttl must be positive, got: %s", ttl.String())
+		}
+		target.localRepoTombstonesTTL = ttl
+		return nil
+	}
+}
+
 // Sets custom logger.
 // Default is stdout logger.
 func WithLogger[K fmt.Stringer, V any](l zerolog.Logger) options.Option[createClientParams[K, V]] {
 	return func(target *createClientParams[K, V]) error {
 		target.logger = l
+		return nil
+	}
+}
+
+// Sets custom hashring func.
+// Default is md5.
+func WithHashFunc[K fmt.Stringer, V any](hf hashringx.HashFunc) options.Option[createClientParams[K, V]] {
+	return func(target *createClientParams[K, V]) error {
+		if hf == nil {
+			return errors.New("got nil hashfunc")
+		}
+		target.hashFunc = hf
+		return nil
+	}
+}
+
+// Sets custom merger.
+// By default newest data overrites old one.
+func WithMerger[K fmt.Stringer, V any](m Merger[K, V]) options.Option[createClientParams[K, V]] {
+	return func(target *createClientParams[K, V]) error {
+		if m == nil {
+			return errors.New("got nil merger")
+		}
+		target.merger = m
 		return nil
 	}
 }
@@ -98,7 +135,10 @@ func WithLocalRepo[K fmt.Stringer, V any](repo local_kv_pairs.Repository[K, V]) 
 // Default are HTTP.
 //
 //	WARNING! Apply this opt only if you know what you are doing.
-func WithRemoteRepoAndController[K fmt.Stringer, V any](repo remote_kv_pairs.Gateway[K, V], ctrl Controller) options.Option[createClientParams[K, V]] {
+func WithRemoteRepoAndController[K fmt.Stringer, V any](
+	repo remote_kv_pairs.Gateway[K, V],
+	ctrl Controller[K, V],
+) options.Option[createClientParams[K, V]] {
 	return func(target *createClientParams[K, V]) error {
 		if repo == nil {
 			return errors.New("got nil remote repo")

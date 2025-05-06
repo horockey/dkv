@@ -29,7 +29,6 @@ type HttpController[K fmt.Stringer, V any] struct {
 func New[K fmt.Stringer, V any](
 	addr string,
 	apiKey string,
-	proc *processor.Processor[K, V],
 	logger zerolog.Logger,
 ) *HttpController[K, V] {
 	ctrl := HttpController[K, V]{
@@ -40,7 +39,6 @@ func New[K fmt.Stringer, V any](
 			}),
 		},
 		apiKey:  apiKey,
-		proc:    proc,
 		logger:  logger,
 		metrics: newMetrics(),
 	}
@@ -64,7 +62,8 @@ func (ctrl *HttpController[K, V]) Metrics() []prometheus.Collector {
 	return ctrl.metrics.list()
 }
 
-func (ctrl *HttpController[K, V]) Start(ctx context.Context) (resErr error) {
+func (ctrl *HttpController[K, V]) Start(ctx context.Context, pr *processor.Processor[K, V]) (resErr error) {
+	ctrl.proc = pr
 	var wg sync.WaitGroup
 	defer wg.Wait()
 

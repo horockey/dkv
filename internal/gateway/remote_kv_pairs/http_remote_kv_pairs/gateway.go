@@ -6,17 +6,20 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	controller_dto "github.com/horockey/dkv/internal/controller/http_controller/dto"
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
 	"github.com/horockey/dkv/internal/model"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var _ remote_kv_pairs.Gateway[fmt.Stringer, any] = &httpRemoteKVPairs[fmt.Stringer, any]{}
 
 type httpRemoteKVPairs[K fmt.Stringer, V any] struct {
-	cl *resty.Client
+	cl      *resty.Client
+	metrics *metrics
 }
 
 func New[K fmt.Stringer, V any](
@@ -24,6 +27,7 @@ func New[K fmt.Stringer, V any](
 	apiKey string,
 ) *httpRemoteKVPairs[K, V] {
 	return &httpRemoteKVPairs[K, V]{
+		metrics: newMetrics(),
 		cl: resty.New().
 			SetPathParam("port", strconv.Itoa(servicePort)).
 			SetHeader("X-Api-Key", apiKey).
@@ -31,7 +35,23 @@ func New[K fmt.Stringer, V any](
 	}
 }
 
-func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key K) (model.KVPair[K, V], error) {
+func (gw *httpRemoteKVPairs[K, V]) Metrics() []prometheus.Collector {
+	return gw.metrics.list()
+}
+
+func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key K) (res model.KVPair[K, V], resErr error) {
+	defer func(ts time.Time) {
+		gw.metrics.requestsCnt.Inc()
+		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch resErr {
+		case nil:
+			gw.metrics.successProcessCnt.Inc()
+		default:
+			gw.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
@@ -57,7 +77,19 @@ func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname string, key K) (model.KVPair[K, V], error) {
+func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname string, key K) (res model.KVPair[K, V], resErr error) {
+	defer func(ts time.Time) {
+		gw.metrics.requestsCnt.Inc()
+		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch resErr {
+		case nil:
+			gw.metrics.successProcessCnt.Inc()
+		default:
+			gw.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
@@ -84,7 +116,19 @@ func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname stri
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(ctx context.Context, hostname string, kvp model.KVPair[K, V]) error {
+func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(ctx context.Context, hostname string, kvp model.KVPair[K, V]) (resErr error) {
+	defer func(ts time.Time) {
+		gw.metrics.requestsCnt.Inc()
+		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch resErr {
+		case nil:
+			gw.metrics.successProcessCnt.Inc()
+		default:
+			gw.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	dtoKVP, err := controller_dto.NewKV(kvp)
 	if err != nil {
 		return fmt.Errorf("converting model kv to dto: %w", err)
@@ -106,7 +150,19 @@ func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(ctx context.Context, hostname str
 	return nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) Remove(ctx context.Context, hostname string, key K) error {
+func (gw *httpRemoteKVPairs[K, V]) Remove(ctx context.Context, hostname string, key K) (resErr error) {
+	defer func(ts time.Time) {
+		gw.metrics.requestsCnt.Inc()
+		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+
+		switch resErr {
+		case nil:
+			gw.metrics.successProcessCnt.Inc()
+		default:
+			gw.metrics.errProcessCnt.Inc()
+		}
+	}(time.Now())
+
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).

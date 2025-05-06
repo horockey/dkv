@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const tombTTL = time.Minute
+
 func setupDB(t *testing.T) (*badger.DB, func()) {
 	dir := t.TempDir()
 
@@ -32,7 +34,7 @@ func Test_Get_KeyNotFound(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, any](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, any](db, tombTTL)
 
 	key := model.MockStringer("nonexistent_key")
 
@@ -47,15 +49,18 @@ func Test_Get_Success(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
 	key := model.MockStringer("test_key")
 	value := "test_value"
 
-	err := repo.AddOrUpdate(model.KVPair[model.MockStringer, string]{
-		Key:      key,
-		Value:    value,
-		Modified: time.Now(),
-	})
+	err := repo.AddOrUpdate(
+		model.KVPair[model.MockStringer, string]{
+			Key:      key,
+			Value:    value,
+			Modified: time.Now(),
+		},
+		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+	)
 	require.NoError(t, err)
 
 	kv, err := repo.Get(key)
@@ -70,7 +75,7 @@ func Test_GetNoValue_KeyNotFound(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, any](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, any](db, tombTTL)
 	key := model.MockStringer("nonexistent_key")
 
 	kv, err := repo.GetNoValue(key)
@@ -84,15 +89,18 @@ func Test_GetNoValue_Success(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
 	key := model.MockStringer("test_key")
 	value := "test_value"
 
-	err := repo.AddOrUpdate(model.KVPair[model.MockStringer, string]{
-		Key:      key,
-		Value:    value,
-		Modified: time.Now(),
-	})
+	err := repo.AddOrUpdate(
+		model.KVPair[model.MockStringer, string]{
+			Key:      key,
+			Value:    value,
+			Modified: time.Now(),
+		},
+		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+	)
 	require.NoError(t, err)
 
 	kv, err := repo.GetNoValue(key)
@@ -107,14 +115,17 @@ func Test_AddOrUpdate(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
 	key := model.MockStringer("test_key")
 	kv := model.KVPair[model.MockStringer, string]{
 		Key:   key,
 		Value: "test_value",
 	}
 
-	err := repo.AddOrUpdate(kv)
+	err := repo.AddOrUpdate(
+		kv,
+		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+	)
 	require.NoError(t, err)
 
 	var storedValue string
@@ -136,15 +147,18 @@ func Test_Remove(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db)
+	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
 	key := model.MockStringer("test_key")
 	value := "test_value"
 
-	err := repo.AddOrUpdate(model.KVPair[model.MockStringer, string]{
-		Key:      key,
-		Value:    value,
-		Modified: time.Now(),
-	})
+	err := repo.AddOrUpdate(
+		model.KVPair[model.MockStringer, string]{
+			Key:      key,
+			Value:    value,
+			Modified: time.Now(),
+		},
+		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+	)
 	require.NoError(t, err)
 
 	// Удаляем его
