@@ -78,6 +78,7 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 		),
 		pr.hashFunc,
 	)
+	pr.hashRing.AddNode(pr.hostname)
 
 	err = pr.discovery.Register(
 		ctx,
