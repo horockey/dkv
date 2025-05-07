@@ -26,6 +26,7 @@ import (
 
 type (
 	Discovery = model.Discovery
+	Node      = model.Node
 )
 
 type Client[K fmt.Stringer, V any] struct {
