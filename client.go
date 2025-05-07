@@ -121,7 +121,12 @@ func New[K fmt.Stringer, V any](
 		params.logger,
 	)
 
-	return &Client[K, V]{Processor: proc, ctrl: params.controller}, nil
+	return &Client[K, V]{
+		Processor:  proc,
+		ctrl:       params.controller,
+		localRepo:  params.localRepo,
+		remoteRepo: params.remoteRepo,
+	}, nil
 }
 
 func (cl *Client[K, V]) Start(ctx context.Context) error {
