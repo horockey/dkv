@@ -13,11 +13,11 @@ import (
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
 	"github.com/horockey/dkv/pkg/hashringx"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	"github.com/samber/lo"
 )
 
-// TODO: add metrics
 type Processor[K fmt.Stringer, V any] struct {
 	localStorage  local_kv_pairs.Repository[K, V]
 	merger        model.Merger[K, V]
@@ -30,6 +30,7 @@ type Processor[K fmt.Stringer, V any] struct {
 	replicas      uint8
 	revertTimeout time.Duration
 	Logger        zerolog.Logger
+	metrics       *metrics
 }
 
 func New[K fmt.Stringer, V any](
@@ -56,7 +57,12 @@ func New[K fmt.Stringer, V any](
 		revertTimeout: revertTimeout,
 		Logger:        logger,
 		hashRing:      hashringx.New([]string{}),
+		metrics:       newMetrics(),
 	}
+}
+
+func (pr *Processor[K, V]) Metrics() []prometheus.Collector {
+	return pr.metrics.list()
 }
 
 func (pr *Processor[K, V]) Start(ctx context.Context) error {
@@ -66,7 +72,7 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 
 	allNodes, err := pr.discovery.GetNodes(ctx)
 	if err != nil {
-		return fmt.Errorf("geting all nodes from discovery: %w", err)
+		return fmt.Errorf("getting all nodes from discovery: %w", err)
 	}
 
 	pr.hashRing = hashringx.NewWithHashAndWeights(
@@ -86,8 +92,20 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 		func(upd model.Node) error {
 			switch upd.State {
 			case model.StateDown:
+				// If already processed
+				allNodes, _ := pr.hashRing.GetNodes("", pr.hashRing.Size())
+				if !slices.Contains(allNodes, upd.Hostname) {
+					return nil
+				}
+
 				pr.hashRing.RemoveNode(upd.Hostname)
 			case model.StateUp:
+				// If already processed
+				allNodes, _ := pr.hashRing.GetNodes("", pr.hashRing.Size())
+				if slices.Contains(allNodes, upd.Hostname) {
+					return nil
+				}
+
 				pr.hashRing.AddWeightedNode(upd.Hostname, parseWeightFromMeta(upd.Meta))
 			}
 			pr.moveExtraKvpsToRemotes(ctx)
@@ -109,12 +127,8 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 
 	pr.moveExtraKvpsToRemotes(ctx)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("running context: %w", ctx.Err())
-		}
-	}
+	<-ctx.Done()
+	return fmt.Errorf("running context: %w", ctx.Err())
 }
 
 func (pr *Processor[K, V]) Get(ctx context.Context, key K) (model.KVPair[K, V], error) {

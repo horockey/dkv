@@ -17,8 +17,9 @@ type KV struct {
 }
 
 func KVToModel[K fmt.Stringer, V any](kv KV) (model.KVPair[K, V], error) {
+	//nolint: forcetypeassert
 	res := model.KVPair[K, V]{
-		Key:      fmt.Stringer((model.MockStringer(kv.Key))).(K),
+		Key:      fmt.Stringer((model.MockStringer(kv.Key))).(K), //nolint: forcetypeassert, errcheck
 		Modified: time.Unix(kv.ModifiedUnix, 0),
 	}
 

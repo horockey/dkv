@@ -11,6 +11,7 @@ type Int64PairHashKey struct {
 }
 
 func (k *Int64PairHashKey) Less(other HashKey) bool {
+	//nolint: all
 	o := other.(*Int64PairHashKey)
 	if k.High < o.High {
 		return true

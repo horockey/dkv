@@ -114,6 +114,7 @@ func (ctrl *HttpController[K, V]) getKVKeyHandler(w http.ResponseWriter, req *ht
 		return
 	}
 
+	//nolint: forcetypeassert, errcheck
 	k := fmt.Stringer(model.MockStringer(key)).(K)
 	kvp, err := ctrl.proc.Get(req.Context(), k)
 	if err != nil {
@@ -152,6 +153,7 @@ func (ctrl *HttpController[K, V]) deleteKVKeyHandler(w http.ResponseWriter, req 
 		return
 	}
 
+	//nolint: forcetypeassert, errcheck
 	k := fmt.Stringer(model.MockStringer(key)).(K)
 	if err := ctrl.proc.Remove(req.Context(), k); err != nil {
 		ctrl.logger.

@@ -31,7 +31,7 @@ func WithServicePort[K fmt.Stringer, V any](p int) options.Option[createClientPa
 		if p <= 0 {
 			return fmt.Errorf("port must be positive, got: %d", p)
 		}
-		target.servicePort = int(p)
+		target.servicePort = p
 		return nil
 	}
 }
@@ -121,7 +121,9 @@ func WithMerger[K fmt.Stringer, V any](m Merger[K, V]) options.Option[createClie
 // Default is badger persistent repo.
 //
 // WARNING! Apply this opt only if you know what you are doing.
-func WithLocalRepo[K fmt.Stringer, V any](repo local_kv_pairs.Repository[K, V]) options.Option[createClientParams[K, V]] {
+func WithLocalRepo[K fmt.Stringer, V any](
+	repo local_kv_pairs.Repository[K, V],
+) options.Option[createClientParams[K, V]] {
 	return func(target *createClientParams[K, V]) error {
 		if repo == nil {
 			return errors.New("got nil local repo")

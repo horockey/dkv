@@ -39,6 +39,7 @@ type HashRing struct {
 type Uint32HashKey uint32
 
 func (k Uint32HashKey) Less(other HashKey) bool {
+	//nolint: all
 	return k < other.(Uint32HashKey)
 }
 
@@ -242,6 +243,7 @@ func (h *HashRing) UpdateWeightedNode(node string, weight int) *HashRing {
 		return h
 	}
 
+	//nolint: all
 	nodes := make([]string, len(h.nodes))
 	copy(nodes, h.nodes)
 

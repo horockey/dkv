@@ -39,7 +39,11 @@ func (gw *httpRemoteKVPairs[K, V]) Metrics() []prometheus.Collector {
 	return gw.metrics.list()
 }
 
-func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key K) (res model.KVPair[K, V], resErr error) {
+func (gw *httpRemoteKVPairs[K, V]) Get(
+	ctx context.Context,
+	hostname string,
+	key K,
+) (res model.KVPair[K, V], resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -77,7 +81,11 @@ func (gw *httpRemoteKVPairs[K, V]) Get(ctx context.Context, hostname string, key
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname string, key K) (res model.KVPair[K, V], resErr error) {
+func (gw *httpRemoteKVPairs[K, V]) GetNoValue(
+	ctx context.Context,
+	hostname string,
+	key K,
+) (res model.KVPair[K, V], resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -116,7 +124,11 @@ func (gw *httpRemoteKVPairs[K, V]) GetNoValue(ctx context.Context, hostname stri
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(ctx context.Context, hostname string, kvp model.KVPair[K, V]) (resErr error) {
+func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(
+	ctx context.Context,
+	hostname string,
+	kvp model.KVPair[K, V],
+) (resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))

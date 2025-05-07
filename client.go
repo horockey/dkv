@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs/badger_local_kv_pairs"
 	"github.com/horockey/dkv/pkg/hashringx"
 	"github.com/horockey/go-toolbox/options"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
 
@@ -28,7 +30,9 @@ type (
 
 type Client[K fmt.Stringer, V any] struct {
 	*processor.Processor[K, V]
-	ctrl Controller[K, V]
+	localRepo  local_kv_pairs.Repository[K, V]
+	remoteRepo remote_kv_pairs.Gateway[K, V]
+	ctrl       Controller[K, V]
 }
 
 type createClientParams[K fmt.Stringer, V any] struct {
@@ -50,11 +54,11 @@ type createClientParams[K fmt.Stringer, V any] struct {
 func defaultCreateClientParams[K fmt.Stringer, V any]() createClientParams[K, V] {
 	return createClientParams[K, V]{
 		badgerDir:              "./badger",
-		servicePort:            7000,
-		weight:                 1,
-		replicas:               2,
-		revertTimeout:          time.Second * 10,
-		localRepoTombstonesTTL: time.Hour * 24,
+		servicePort:            7000,             //nolint: mnd
+		weight:                 1,                //nolint: mnd
+		replicas:               2,                //nolint: mnd
+		revertTimeout:          time.Second * 10, //nolint: mnd
+		localRepoTombstonesTTL: time.Hour * 24,   //nolint: mnd
 		merger:                 model.MergeFunc[K, V](model.LastTsMerge[K, V]),
 		hashFunc:               hashringx.DefaultHashFunc,
 		logger: zerolog.New(zerolog.ConsoleWriter{
@@ -151,4 +155,13 @@ func (cl *Client[K, V]) Start(ctx context.Context) error {
 	<-runCtx.Done()
 	wg.Wait()
 	return fmt.Errorf("running context: %w", runCtx.Err())
+}
+
+func (cl *Client[K, V]) Metrics() []prometheus.Collector {
+	return slices.Concat(
+		cl.ctrl.Metrics(),
+		cl.Processor.Metrics(),
+		cl.localRepo.Metrics(),
+		cl.remoteRepo.Metrics(),
+	)
 }

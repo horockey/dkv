@@ -3,7 +3,7 @@ package badger_local_kv_pairs_test
 import (
 	"bytes"
 	"encoding/gob"
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -41,8 +41,8 @@ func Test_Get_KeyNotFound(t *testing.T) {
 	kv, err := repo.Get(key)
 
 	assert.Empty(t, kv)
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, local_kv_pairs.KeyNotFoundError{Key: key.String()}))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, local_kv_pairs.KeyNotFoundError{Key: key.String()})
 }
 
 func Test_Get_Success(t *testing.T) {
@@ -81,8 +81,8 @@ func Test_GetNoValue_KeyNotFound(t *testing.T) {
 	kv, err := repo.GetNoValue(key)
 
 	assert.Empty(t, kv)
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, local_kv_pairs.KeyNotFoundError{Key: key.String()}))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, local_kv_pairs.KeyNotFoundError{Key: key.String()})
 }
 
 func Test_GetNoValue_Success(t *testing.T) {
@@ -107,7 +107,7 @@ func Test_GetNoValue_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, key, kv.Key)
-	assert.Zero(t, kv.Value) // Значение не должно быть заполнено
+	assert.Empty(t, kv.Value)
 	assert.NotZero(t, kv.Modified)
 }
 
@@ -132,7 +132,7 @@ func Test_AddOrUpdate(t *testing.T) {
 	err = db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key.String()))
 		if err != nil {
-			return err
+			return fmt.Errorf("perfofring txn.get: %w", err)
 		}
 		return item.Value(func(val []byte) error {
 			return gob.NewDecoder(bytes.NewBuffer(val)).Decode(&storedValue)
@@ -168,9 +168,9 @@ func Test_Remove(t *testing.T) {
 	// Проверяем, что оно удалено
 	err = db.View(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(key.String()))
-		return err
+		return fmt.Errorf("perfofring txn.get: %w", err)
 	})
 
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, badger.ErrKeyNotFound))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, badger.ErrKeyNotFound)
 }

@@ -166,13 +166,16 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V
 
 // Updates kvp.
 // If repo has newer version of it, will return local_kv_pairs.KvTooOldError.
+//
+// nolint: gocognit
+// TODO: refactor to multiple cognitive acceptable funcs
 func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf model.Merger[K, V]) (resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 
-		switch {
-		case resErr == nil:
+		switch resErr {
+		case nil:
 			repo.metrics.successProcessCnt.Inc()
 			repo.metrics.repoSizeItemsGauge.Inc()
 		default:
@@ -273,8 +276,8 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 
-		switch {
-		case resErr == nil:
+		switch resErr {
+		case nil:
 			repo.metrics.successProcessCnt.Inc()
 			repo.metrics.repoSizeItemsGauge.Dec()
 		default:
@@ -336,12 +339,14 @@ func (repo *badgerLocalKVPairs[K, V]) CheckTombstone(key K) (ts int64, resErr er
 			return fmt.Errorf("getting tombstone item: %w", err)
 		}
 
-		item.Value(func(val []byte) error {
+		if err := item.Value(func(val []byte) error {
 			if err := gob.NewDecoder(bytes.NewBuffer(val)).Decode(&ts); err != nil {
 				return fmt.Errorf("decoding gob tombstone: %w", err)
 			}
 			return nil
-		})
+		}); err != nil {
+			return fmt.Errorf("getting tombstone item value: %w", err)
+		}
 
 		return nil
 	}); err != nil {
@@ -356,8 +361,8 @@ func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, 
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 
-		switch {
-		case resErr == nil:
+		switch resErr {
+		case nil:
 			repo.metrics.successProcessCnt.Inc()
 		default:
 			repo.metrics.errProcessCnt.Inc()
@@ -372,6 +377,7 @@ func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, 
 
 		for it.Rewind(); it.Valid(); it.Next() {
 
+			//nolint: forcetypeassert, errcheck
 			key := fmt.Stringer(model.MockStringer(string(it.Item().Key()))).(K)
 
 			_, err := txn.Get([]byte(key.String()))
