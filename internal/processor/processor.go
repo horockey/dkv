@@ -278,7 +278,7 @@ func (pr *Processor[K, V]) Remove(ctx context.Context, key K) (resErr error) {
 }
 
 func (pr *Processor[K, V]) getOwnerAndReplicas(key K) (owner string, replicas []string, resErr error) {
-	nodes, ok := pr.hashRing.GetNodes(key.String(), int(pr.replicas)+1)
+	nodes, ok := pr.hashRing.GetNodes(key.String(), min(int(pr.replicas)+1, pr.hashRing.Size()))
 	if !ok {
 		return "", nil, fmt.Errorf("unable to get owner from hashring")
 	}
