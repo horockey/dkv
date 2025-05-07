@@ -55,7 +55,7 @@ func New[K fmt.Stringer, V any](
 
 	ctrl.serv.Handler = router
 
-	return nil
+	return &ctrl
 }
 
 func (ctrl *HttpController[K, V]) Metrics() []prometheus.Collector {
