@@ -84,7 +84,7 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 		),
 		pr.hashFunc,
 	)
-	pr.hashRing.AddNode(pr.hostname)
+	pr.hashRing = pr.hashRing.AddWeightedNode(pr.hostname, int(pr.weight))
 
 	err = pr.discovery.Register(
 		ctx,
@@ -98,7 +98,7 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 					return nil
 				}
 
-				pr.hashRing.RemoveNode(upd.Hostname)
+				pr.hashRing = pr.hashRing.RemoveNode(upd.Hostname)
 			case model.StateUp:
 				// If already processed
 				allNodes, _ := pr.hashRing.GetNodes("", pr.hashRing.Size())
@@ -106,7 +106,7 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 					return nil
 				}
 
-				pr.hashRing.AddWeightedNode(upd.Hostname, parseWeightFromMeta(upd.Meta))
+				pr.hashRing = pr.hashRing.AddWeightedNode(upd.Hostname, parseWeightFromMeta(upd.Meta))
 			}
 			pr.moveExtraKvpsToRemotes(ctx)
 			return nil
