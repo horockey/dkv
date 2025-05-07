@@ -214,24 +214,25 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 			}
 		}
 
-		item, err := txn.Get([]byte(kvp.Key.String()))
-		if err != nil {
-			if errors.Is(err, badger.ErrKeyNotFound) {
-				return local_kv_pairs.KeyNotFoundError{Key: kvp.Key.String()}
-			}
-			return fmt.Errorf("getting item: %w", err)
-		}
+		var oldValue V = *new(V)
 
-		var oldValue V
-		if err := item.Value(func(val []byte) error {
-			if err := gob.
-				NewDecoder(bytes.NewBuffer(val)).
-				Decode(&oldValue); err != nil {
-				return fmt.Errorf("decoding gob: %w", err)
+		item, err := txn.Get([]byte(kvp.Key.String()))
+		switch {
+		case errors.Is(err, badger.ErrKeyNotFound):
+			break
+		case err != nil:
+			return fmt.Errorf("getting item: %w", err)
+		default:
+			if err := item.Value(func(val []byte) error {
+				if err := gob.
+					NewDecoder(bytes.NewBuffer(val)).
+					Decode(&oldValue); err != nil {
+					return fmt.Errorf("decoding gob: %w", err)
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("getting value: %w", err)
 			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("getting value: %w", err)
 		}
 
 		mergedKvp := mf.Merge(
