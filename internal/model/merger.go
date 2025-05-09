@@ -13,7 +13,7 @@ func (mf MergeFunc[K, V]) Merge(a, b KVPair[K, V]) KVPair[K, V] {
 }
 
 func LastTsMerge[K fmt.Stringer, V any](a, b KVPair[K, V]) KVPair[K, V] {
-	if a.Modified.Before(b.Modified) {
+	if a.Modified.After(b.Modified) {
 		return a
 	}
 	return b

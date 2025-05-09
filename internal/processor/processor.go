@@ -171,7 +171,14 @@ func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (res
 		defer cancel()
 
 		for _, node := range nodesToRevert {
-			err := pr.remoteStorage.Remove(revCtx, node, key)
+			var err error
+
+			if node == pr.hostname {
+				err = pr.localStorage.Remove(key)
+			} else {
+				err = pr.remoteStorage.Remove(revCtx, node, key)
+			}
+
 			if err != nil {
 				resErr = errors.Join(resErr, fmt.Errorf("reverting on %s: %w", node, err))
 				if errors.Is(err, context.DeadlineExceeded) {

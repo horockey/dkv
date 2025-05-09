@@ -195,8 +195,8 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 		}
 
 		data := slices.Clone(buf.Bytes())
-
 		buf.Reset()
+
 		if err := txn.Set([]byte(mergedKvp.Key.String()+withValueSuffix), data); err != nil {
 			return fmt.Errorf("setting item to db: %w", err)
 		}
