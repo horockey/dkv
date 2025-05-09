@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/horockey/dkv/internal/controller/http_controller/dto"
+	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
 	"github.com/horockey/go-toolbox/http_helpers"
 	"github.com/prometheus/client_golang/prometheus"
@@ -119,6 +120,10 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 			Error().
 			Err(fmt.Errorf("getting kvp from proc: %w", err)).
 			Send()
+		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
+			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
+			return
+		}
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
 		return
 	}

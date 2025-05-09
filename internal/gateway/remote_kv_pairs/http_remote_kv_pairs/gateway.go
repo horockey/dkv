@@ -64,7 +64,12 @@ func (gw *httpRemoteKVPairs[V]) Get(
 	if err != nil {
 		return model.KVPair[V]{}, fmt.Errorf("executing request: %w", err)
 	}
-	if resp.StatusCode() != http.StatusOK {
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		break
+	case http.StatusNotFound:
+		return model.KVPair[V]{}, model.KeyNotFoundError{Key: key}
+	default:
 		return model.KVPair[V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
@@ -107,7 +112,12 @@ func (gw *httpRemoteKVPairs[V]) GetNoValue(
 	if err != nil {
 		return model.KVPair[V]{}, fmt.Errorf("executing request: %w", err)
 	}
-	if resp.StatusCode() != http.StatusOK {
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		break
+	case http.StatusNotFound:
+		return model.KVPair[V]{}, model.KeyNotFoundError{Key: key}
+	default:
 		return model.KVPair[V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
@@ -155,7 +165,12 @@ func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
-	if resp.StatusCode() != http.StatusOK {
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		break
+	case http.StatusNotFound:
+		return model.KeyNotFoundError{Key: kvp.Key}
+	default:
 		return fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
@@ -183,7 +198,12 @@ func (gw *httpRemoteKVPairs[V]) Remove(ctx context.Context, hostname string, key
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
-	if resp.StatusCode() != http.StatusOK {
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		break
+	case http.StatusNotFound:
+		return model.KeyNotFoundError{Key: key}
+	default:
 		return fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
