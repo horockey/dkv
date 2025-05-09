@@ -1,4 +1,4 @@
-package local_kv_pairs
+package model
 
 import (
 	"fmt"

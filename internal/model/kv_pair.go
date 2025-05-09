@@ -1,12 +1,11 @@
 package model
 
 import (
-	"fmt"
 	"time"
 )
 
-type KVPair[K fmt.Stringer, V any] struct {
-	Key      K
+type KVPair[V any] struct {
+	Key      string
 	Value    V
 	Modified time.Time
 }

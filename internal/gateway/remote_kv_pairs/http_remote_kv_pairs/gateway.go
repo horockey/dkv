@@ -15,18 +15,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var _ remote_kv_pairs.Gateway[fmt.Stringer, any] = &httpRemoteKVPairs[fmt.Stringer, any]{}
+var _ remote_kv_pairs.Gateway[any] = &httpRemoteKVPairs[any]{}
 
-type httpRemoteKVPairs[K fmt.Stringer, V any] struct {
+type httpRemoteKVPairs[V any] struct {
 	cl      *resty.Client
 	metrics *metrics
 }
 
-func New[K fmt.Stringer, V any](
+func New[V any](
 	servicePort int,
 	apiKey string,
-) *httpRemoteKVPairs[K, V] {
-	return &httpRemoteKVPairs[K, V]{
+) *httpRemoteKVPairs[V] {
+	return &httpRemoteKVPairs[V]{
 		metrics: newMetrics(),
 		cl: resty.New().
 			SetPathParam("port", strconv.Itoa(servicePort)).
@@ -35,15 +35,15 @@ func New[K fmt.Stringer, V any](
 	}
 }
 
-func (gw *httpRemoteKVPairs[K, V]) Metrics() []prometheus.Collector {
+func (gw *httpRemoteKVPairs[V]) Metrics() []prometheus.Collector {
 	return gw.metrics.list()
 }
 
-func (gw *httpRemoteKVPairs[K, V]) Get(
+func (gw *httpRemoteKVPairs[V]) Get(
 	ctx context.Context,
 	hostname string,
-	key K,
-) (res model.KVPair[K, V], resErr error) {
+	key string,
+) (res model.KVPair[V], resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -59,33 +59,33 @@ func (gw *httpRemoteKVPairs[K, V]) Get(
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
-		SetPathParam("key", key.String()).
+		SetPathParam("key", key).
 		Get("http://{hostname}:{port}/kv/{key}")
 	if err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("executing request: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("executing request: %w", err)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return model.KVPair[K, V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
+		return model.KVPair[V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
 	dtoKV := controller_dto.KV{}
 	if err := json.Unmarshal(resp.Body(), &dtoKV); err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("unmarshaling json: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("unmarshaling json: %w", err)
 	}
 
-	kv, err := controller_dto.KVToModel[K, V](dtoKV)
+	kv, err := controller_dto.KVToModel[V](dtoKV)
 	if err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("converting dto kv to model: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("converting dto kv to model: %w", err)
 	}
 
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) GetNoValue(
+func (gw *httpRemoteKVPairs[V]) GetNoValue(
 	ctx context.Context,
 	hostname string,
-	key K,
-) (res model.KVPair[K, V], resErr error) {
+	key string,
+) (res model.KVPair[V], resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -101,33 +101,33 @@ func (gw *httpRemoteKVPairs[K, V]) GetNoValue(
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
-		SetPathParam("key", key.String()).
+		SetPathParam("key", key).
 		SetQueryParam("no-value", "true").
 		Get("http://{hostname}:{port}/kv/{key}")
 	if err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("executing request: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("executing request: %w", err)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return model.KVPair[K, V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
+		return model.KVPair[V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
 	}
 
 	dtoKV := controller_dto.KV{}
 	if err := json.Unmarshal(resp.Body(), &dtoKV); err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("unmarshaling json: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("unmarshaling json: %w", err)
 	}
 
-	kv, err := controller_dto.KVToModel[K, V](dtoKV)
+	kv, err := controller_dto.KVToModel[V](dtoKV)
 	if err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("converting dto kv to model: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("converting dto kv to model: %w", err)
 	}
 
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(
+func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	ctx context.Context,
 	hostname string,
-	kvp model.KVPair[K, V],
+	kvp model.KVPair[V],
 ) (resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
@@ -162,7 +162,7 @@ func (gw *httpRemoteKVPairs[K, V]) AddOrUpdate(
 	return nil
 }
 
-func (gw *httpRemoteKVPairs[K, V]) Remove(ctx context.Context, hostname string, key K) (resErr error) {
+func (gw *httpRemoteKVPairs[V]) Remove(ctx context.Context, hostname string, key string) (resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -178,7 +178,7 @@ func (gw *httpRemoteKVPairs[K, V]) Remove(ctx context.Context, hostname string, 
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
-		SetPathParam("key", key.String()).
+		SetPathParam("key", key).
 		Delete("http://{hostname}:{port}/kv/{key}")
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)

@@ -29,38 +29,38 @@ type (
 	Node      = model.Node
 )
 
-type Client[K fmt.Stringer, V any] struct {
-	*processor.Processor[K, V]
-	localRepo  local_kv_pairs.Repository[K, V]
-	remoteRepo remote_kv_pairs.Gateway[K, V]
-	ctrl       Controller[K, V]
+type Client[V any] struct {
+	*processor.Processor[V]
+	localRepo  local_kv_pairs.Repository[V]
+	remoteRepo remote_kv_pairs.Gateway[V]
+	ctrl       Controller[V]
 }
 
-type createClientParams[K fmt.Stringer, V any] struct {
+type createClientParams[V any] struct {
 	badgerDir              string
 	servicePort            int
 	weight                 uint
 	replicas               uint8
-	merger                 Merger[K, V]
+	merger                 Merger[V]
 	hashFunc               hashringx.HashFunc
 	revertTimeout          time.Duration
 	logger                 zerolog.Logger
 	localRepoTombstonesTTL time.Duration
 
-	localRepo  local_kv_pairs.Repository[K, V]
-	remoteRepo remote_kv_pairs.Gateway[K, V]
-	controller Controller[K, V]
+	localRepo  local_kv_pairs.Repository[V]
+	remoteRepo remote_kv_pairs.Gateway[V]
+	controller Controller[V]
 }
 
-func defaultCreateClientParams[K fmt.Stringer, V any]() createClientParams[K, V] {
-	return createClientParams[K, V]{
+func defaultCreateClientParams[V any]() createClientParams[V] {
+	return createClientParams[V]{
 		badgerDir:              "./badger",
 		servicePort:            7000,             //nolint: mnd
 		weight:                 1,                //nolint: mnd
 		replicas:               2,                //nolint: mnd
 		revertTimeout:          time.Second * 10, //nolint: mnd
 		localRepoTombstonesTTL: time.Hour * 24,   //nolint: mnd
-		merger:                 model.MergeFunc[K, V](model.LastTsMerge[K, V]),
+		merger:                 model.MergeFunc[V](model.LastTsMerge[V]),
 		hashFunc:               hashringx.DefaultHashFunc,
 		logger: zerolog.New(zerolog.ConsoleWriter{
 			Out:        os.Stdout,
@@ -72,13 +72,13 @@ func defaultCreateClientParams[K fmt.Stringer, V any]() createClientParams[K, V]
 	}
 }
 
-func New[K fmt.Stringer, V any](
+func NewClient[V any](
 	apiKey string,
 	hostname string,
 	discovery Discovery,
-	opts ...options.Option[createClientParams[K, V]],
-) (*Client[K, V], error) {
-	params := defaultCreateClientParams[K, V]()
+	opts ...options.Option[createClientParams[V]],
+) (*Client[V], error) {
+	params := defaultCreateClientParams[V]()
 	if err := options.ApplyOptions(&params, opts...); err != nil {
 		return nil, fmt.Errorf("applying opts: %w", err)
 	}
@@ -93,15 +93,15 @@ func New[K fmt.Stringer, V any](
 			return nil, fmt.Errorf("creating badger DB: %w", err)
 		}
 
-		params.localRepo = badger_local_kv_pairs.New[K, V](badgerDB, params.localRepoTombstonesTTL)
+		params.localRepo = badger_local_kv_pairs.New[V](badgerDB, params.localRepoTombstonesTTL)
 	}
 
 	if params.remoteRepo == nil {
-		params.remoteRepo = http_remote_kv_pairs.New[K, V](params.servicePort, apiKey)
+		params.remoteRepo = http_remote_kv_pairs.New[V](params.servicePort, apiKey)
 	}
 
 	if params.controller == nil {
-		params.controller = http_controller.New[K, V](
+		params.controller = http_controller.New[V](
 			"0.0.0.0:"+strconv.Itoa(params.servicePort),
 			apiKey,
 			params.logger.With().Str("subscope", "http_controller").Logger(),
@@ -121,7 +121,7 @@ func New[K fmt.Stringer, V any](
 		params.logger,
 	)
 
-	return &Client[K, V]{
+	return &Client[V]{
 		Processor:  proc,
 		ctrl:       params.controller,
 		localRepo:  params.localRepo,
@@ -129,7 +129,7 @@ func New[K fmt.Stringer, V any](
 	}, nil
 }
 
-func (cl *Client[K, V]) Start(ctx context.Context) error {
+func (cl *Client[V]) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 
 	var wg sync.WaitGroup
@@ -163,7 +163,7 @@ func (cl *Client[K, V]) Start(ctx context.Context) error {
 	return fmt.Errorf("running context: %w", runCtx.Err())
 }
 
-func (cl *Client[K, V]) Metrics() []prometheus.Collector {
+func (cl *Client[V]) Metrics() []prometheus.Collector {
 	return slices.Concat(
 		cl.ctrl.Metrics(),
 		cl.Processor.Metrics(),

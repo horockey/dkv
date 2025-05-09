@@ -9,7 +9,6 @@ import (
 
 	"github.com/dgraph-io/badger"
 	"github.com/horockey/dkv/internal/model"
-	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs/badger_local_kv_pairs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,32 +33,32 @@ func Test_Get_KeyNotFound(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, any](db, tombTTL)
+	repo := badger_local_kv_pairs.New[any](db, tombTTL)
 
-	key := model.MockStringer("nonexistent_key")
+	key := "nonexistent_key"
 
 	kv, err := repo.Get(key)
 
 	assert.Empty(t, kv)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, local_kv_pairs.KeyNotFoundError{Key: key.String()})
+	assert.ErrorIs(t, err, model.KeyNotFoundError{Key: key})
 }
 
 func Test_Get_Success(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
-	key := model.MockStringer("test_key")
+	repo := badger_local_kv_pairs.New[string](db, tombTTL)
+	key := "test_key"
 	value := "test_value"
 
 	err := repo.AddOrUpdate(
-		model.KVPair[model.MockStringer, string]{
+		model.KVPair[string]{
 			Key:      key,
 			Value:    value,
 			Modified: time.Now(),
 		},
-		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+		model.MergeFunc[string](model.LastTsMerge[string]),
 	)
 	require.NoError(t, err)
 
@@ -75,31 +74,31 @@ func Test_GetNoValue_KeyNotFound(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, any](db, tombTTL)
-	key := model.MockStringer("nonexistent_key")
+	repo := badger_local_kv_pairs.New[any](db, tombTTL)
+	key := "nonexistent_key"
 
 	kv, err := repo.GetNoValue(key)
 
 	assert.Empty(t, kv)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, local_kv_pairs.KeyNotFoundError{Key: key.String()})
+	assert.ErrorIs(t, err, model.KeyNotFoundError{Key: key})
 }
 
 func Test_GetNoValue_Success(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
-	key := model.MockStringer("test_key")
+	repo := badger_local_kv_pairs.New[string](db, tombTTL)
+	key := "test_key"
 	value := "test_value"
 
 	err := repo.AddOrUpdate(
-		model.KVPair[model.MockStringer, string]{
+		model.KVPair[string]{
 			Key:      key,
 			Value:    value,
 			Modified: time.Now(),
 		},
-		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+		model.MergeFunc[string](model.LastTsMerge[string]),
 	)
 	require.NoError(t, err)
 
@@ -115,22 +114,22 @@ func Test_AddOrUpdate(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
-	key := model.MockStringer("test_key")
-	kv := model.KVPair[model.MockStringer, string]{
+	repo := badger_local_kv_pairs.New[string](db, tombTTL)
+	key := "test_key"
+	kv := model.KVPair[string]{
 		Key:   key,
 		Value: "test_value",
 	}
 
 	err := repo.AddOrUpdate(
 		kv,
-		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+		model.MergeFunc[string](model.LastTsMerge[string]),
 	)
 	require.NoError(t, err)
 
 	var storedValue string
 	err = db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key.String()))
+		item, err := txn.Get([]byte(key))
 		if err != nil {
 			return fmt.Errorf("perfofring txn.get: %w", err)
 		}
@@ -147,17 +146,17 @@ func Test_Remove(t *testing.T) {
 	db, teardown := setupDB(t)
 	defer teardown()
 
-	repo := badger_local_kv_pairs.New[model.MockStringer, string](db, tombTTL)
-	key := model.MockStringer("test_key")
+	repo := badger_local_kv_pairs.New[string](db, tombTTL)
+	key := "test_key"
 	value := "test_value"
 
 	err := repo.AddOrUpdate(
-		model.KVPair[model.MockStringer, string]{
+		model.KVPair[string]{
 			Key:      key,
 			Value:    value,
 			Modified: time.Now(),
 		},
-		model.MergeFunc[model.MockStringer, string](model.LastTsMerge[model.MockStringer, string]),
+		model.MergeFunc[string](model.LastTsMerge[string]),
 	)
 	require.NoError(t, err)
 
@@ -167,7 +166,7 @@ func Test_Remove(t *testing.T) {
 
 	// Проверяем, что оно удалено
 	err = db.View(func(txn *badger.Txn) error {
-		_, err := txn.Get([]byte(key.String()))
+		_, err := txn.Get([]byte(key))
 		return fmt.Errorf("perfofring txn.get: %w", err)
 	})
 

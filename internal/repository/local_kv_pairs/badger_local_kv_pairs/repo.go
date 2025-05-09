@@ -14,35 +14,35 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var _ local_kv_pairs.Repository[fmt.Stringer, any] = &badgerLocalKVPairs[fmt.Stringer, any]{}
+var _ local_kv_pairs.Repository[any] = &badgerLocalKVPairs[any]{}
 
 const (
 	tombstoneSuffix = "---tombstone---"
 	withValueSuffix = "---with_value---"
 )
 
-type badgerLocalKVPairs[K fmt.Stringer, V any] struct {
+type badgerLocalKVPairs[V any] struct {
 	db            *badger.DB
 	tombstonesTTL time.Duration
 	metrics       *metrics
 }
 
-func New[K fmt.Stringer, V any](
+func New[V any](
 	db *badger.DB,
 	tombstonesTTL time.Duration,
-) *badgerLocalKVPairs[K, V] {
-	return &badgerLocalKVPairs[K, V]{
+) *badgerLocalKVPairs[V] {
+	return &badgerLocalKVPairs[V]{
 		db:            db,
 		tombstonesTTL: tombstonesTTL,
 		metrics:       newMetrics(db),
 	}
 }
 
-func (repo *badgerLocalKVPairs[K, V]) Metrics() []prometheus.Collector {
+func (repo *badgerLocalKVPairs[V]) Metrics() []prometheus.Collector {
 	return repo.metrics.list()
 }
 
-func (repo *badgerLocalKVPairs[K, V]) Get(key K) (resKV model.KVPair[K, V], resErr error) {
+func (repo *badgerLocalKVPairs[V]) Get(key string) (resKV model.KVPair[V], resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -59,14 +59,14 @@ func (repo *badgerLocalKVPairs[K, V]) Get(key K) (resKV model.KVPair[K, V], resE
 		}
 	}(time.Now())
 
-	res := model.KVPair[K, V]{
+	res := model.KVPair[V]{
 		Key: key,
 	}
 	if err := repo.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key.String() + withValueSuffix))
+		item, err := txn.Get([]byte(key + withValueSuffix))
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
-				return local_kv_pairs.KeyNotFoundError{Key: key.String()}
+				return model.KeyNotFoundError{Key: key}
 			}
 			return fmt.Errorf("getting item: %w", err)
 		}
@@ -84,13 +84,13 @@ func (repo *badgerLocalKVPairs[K, V]) Get(key K) (resKV model.KVPair[K, V], resE
 
 		return nil
 	}); err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("reading ftom db: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("reading ftom db: %w", err)
 	}
 
 	return res, nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V], resErr error) {
+func (repo *badgerLocalKVPairs[V]) GetNoValue(key string) (resKV model.KVPair[V], resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -107,14 +107,14 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V
 		}
 	}(time.Now())
 
-	res := model.KVPair[K, V]{
+	res := model.KVPair[V]{
 		Key: key,
 	}
 	if err := repo.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key.String()))
+		item, err := txn.Get([]byte(key))
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
-				return local_kv_pairs.KeyNotFoundError{Key: key.String()}
+				return model.KeyNotFoundError{Key: key}
 			}
 			return fmt.Errorf("getting item: %w", err)
 		}
@@ -132,7 +132,7 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V
 
 		return nil
 	}); err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("reading ftom db: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("reading ftom db: %w", err)
 	}
 
 	return res, nil
@@ -143,7 +143,7 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V
 //
 // nolint: gocognit
 // TODO: refactor to multiple cognitive acceptable funcs
-func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf model.Merger[K, V]) (resErr error) {
+func (repo *badgerLocalKVPairs[V]) AddOrUpdate(kvp model.KVPair[V], mf model.Merger[V]) (resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -158,8 +158,8 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 	}(time.Now())
 
 	if err := repo.db.Update(func(txn *badger.Txn) error {
-		oldKVPItem, err := txn.Get([]byte(kvp.Key.String() + withValueSuffix))
-		oldKVP := model.KVPair[K, V]{}
+		oldKVPItem, err := txn.Get([]byte(kvp.Key + withValueSuffix))
+		oldKVP := model.KVPair[V]{}
 
 		switch {
 		case errors.Is(err, badger.ErrKeyNotFound):
@@ -177,8 +177,8 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 			}
 
 			if oldKVP.Modified.After(kvp.Modified) {
-				return local_kv_pairs.KvTooOldError{
-					Key:         kvp.Key.String(),
+				return model.KvTooOldError{
+					Key:         kvp.Key,
 					InsertingTs: kvp.Modified,
 					InRepoTs:    oldKVP.Modified,
 				}
@@ -197,19 +197,19 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 		data := slices.Clone(buf.Bytes())
 		buf.Reset()
 
-		if err := txn.Set([]byte(mergedKvp.Key.String()+withValueSuffix), data); err != nil {
+		if err := txn.Set([]byte(mergedKvp.Key+withValueSuffix), data); err != nil {
 			return fmt.Errorf("setting item to db: %w", err)
 		}
 
 		if err := gob.
 			NewEncoder(buf).
-			Encode(model.KVPair[K, V]{
+			Encode(model.KVPair[V]{
 				Key:      mergedKvp.Key,
 				Modified: mergedKvp.Modified,
 			}); err != nil {
 			return fmt.Errorf("encoding item: %w", err)
 		}
-		if err := txn.Set([]byte(mergedKvp.Key.String()), buf.Bytes()); err != nil {
+		if err := txn.Set([]byte(mergedKvp.Key), buf.Bytes()); err != nil {
 			return fmt.Errorf("setting item to db: %w", err)
 		}
 
@@ -221,7 +221,7 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 	return nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
+func (repo *badgerLocalKVPairs[V]) Remove(key string) (resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -236,11 +236,11 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
 	}(time.Now())
 
 	if err := repo.db.Update(func(txn *badger.Txn) error {
-		if err := txn.Delete([]byte(key.String())); err != nil {
+		if err := txn.Delete([]byte(key)); err != nil {
 			return fmt.Errorf("deleting item: %w", err)
 		}
 
-		if err := txn.Delete([]byte(key.String() + withValueSuffix)); err != nil {
+		if err := txn.Delete([]byte(key + withValueSuffix)); err != nil {
 			return fmt.Errorf("deleting modItem: %w", err)
 		}
 
@@ -250,7 +250,7 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
 		}
 
 		e := badger.Entry{
-			Key:   []byte(key.String() + tombstoneSuffix),
+			Key:   []byte(key + tombstoneSuffix),
 			Value: buf.Bytes(),
 		}
 
@@ -266,7 +266,7 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
 	return nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) CheckTombstone(key K) (ts int64, resErr error) {
+func (repo *badgerLocalKVPairs[V]) CheckTombstone(key string) (ts int64, resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -284,7 +284,7 @@ func (repo *badgerLocalKVPairs[K, V]) CheckTombstone(key K) (ts int64, resErr er
 	}(time.Now())
 
 	if err := repo.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key.String() + tombstoneSuffix))
+		item, err := txn.Get([]byte(key + tombstoneSuffix))
 		if err != nil {
 			return fmt.Errorf("getting tombstone item: %w", err)
 		}
@@ -306,7 +306,7 @@ func (repo *badgerLocalKVPairs[K, V]) CheckTombstone(key K) (ts int64, resErr er
 	return ts, nil
 }
 
-func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, V], resErr error) {
+func (repo *badgerLocalKVPairs[V]) GetAllNoValue() (resKVs []model.KVPair[V], resErr error) {
 	defer func(ts time.Time) {
 		repo.metrics.requestsCnt.Inc()
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -319,7 +319,7 @@ func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, 
 		}
 	}(time.Now())
 
-	res := []model.KVPair[K, V]{}
+	res := []model.KVPair[V]{}
 
 	err := repo.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -327,12 +327,9 @@ func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, 
 
 		for it.Rewind(); it.Valid(); it.Next() {
 
-			//nolint: forcetypeassert, errcheck
-			// key := fmt.Stringer(model.MockStringer(string(it.Item().Key()))).(K)
-
 			item := it.Item()
 
-			kv := model.KVPair[K, V]{}
+			kv := model.KVPair[V]{}
 
 			if err := item.Value(func(val []byte) error {
 				if err := gob.

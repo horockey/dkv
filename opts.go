@@ -14,8 +14,8 @@ import (
 
 // Sets custom badger root dir.
 // Default is ./badger
-func WithBadgerDir[K fmt.Stringer, V any](dir string) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithBadgerDir[V any](dir string) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if dir == "" {
 			return errors.New("got nil badger dir")
 		}
@@ -26,8 +26,8 @@ func WithBadgerDir[K fmt.Stringer, V any](dir string) options.Option[createClien
 
 // Sets custom service port.
 // Default is 7000.
-func WithServicePort[K fmt.Stringer, V any](p int) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithServicePort[V any](p int) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if p <= 0 {
 			return fmt.Errorf("port must be positive, got: %d", p)
 		}
@@ -38,8 +38,8 @@ func WithServicePort[K fmt.Stringer, V any](p int) options.Option[createClientPa
 
 // Sets custom node weight to report to discovery.
 // Default is 1.
-func WithNodeWeight[K fmt.Stringer, V any](w uint) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithNodeWeight[V any](w uint) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if w == 0 {
 			return fmt.Errorf("node weight must be positive, got: %d", w)
 		}
@@ -50,8 +50,8 @@ func WithNodeWeight[K fmt.Stringer, V any](w uint) options.Option[createClientPa
 
 // Sets custom write replicas count.
 // Default is 2.
-func WithReplicasCount[K fmt.Stringer, V any](r uint8) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithReplicasCount[V any](r uint8) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if r == 0 {
 			return fmt.Errorf("replicas count must be positive, got: %d", r)
 		}
@@ -62,8 +62,8 @@ func WithReplicasCount[K fmt.Stringer, V any](r uint8) options.Option[createClie
 
 // Sets custom timeout for transaction revert.
 // Default is 10s.
-func WithRevertTimeout[K fmt.Stringer, V any](to time.Duration) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithRevertTimeout[V any](to time.Duration) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if to <= 0 {
 			return fmt.Errorf("reveert timeout must be positive, got: %s", to.String())
 		}
@@ -74,8 +74,8 @@ func WithRevertTimeout[K fmt.Stringer, V any](to time.Duration) options.Option[c
 
 // Sets custom tombstone TTL.
 // Default is 1 day.
-func WithLocalRepoTombstonesTTL[K fmt.Stringer, V any](ttl time.Duration) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithLocalRepoTombstonesTTL[V any](ttl time.Duration) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if ttl <= 0 {
 			return fmt.Errorf("ttl must be positive, got: %s", ttl.String())
 		}
@@ -86,8 +86,8 @@ func WithLocalRepoTombstonesTTL[K fmt.Stringer, V any](ttl time.Duration) option
 
 // Sets custom logger.
 // Default is stdout logger.
-func WithLogger[K fmt.Stringer, V any](l zerolog.Logger) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithLogger[V any](l zerolog.Logger) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		target.logger = l
 		return nil
 	}
@@ -95,8 +95,8 @@ func WithLogger[K fmt.Stringer, V any](l zerolog.Logger) options.Option[createCl
 
 // Sets custom hashring func.
 // Default is md5.
-func WithHashFunc[K fmt.Stringer, V any](hf hashringx.HashFunc) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithHashFunc[V any](hf hashringx.HashFunc) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if hf == nil {
 			return errors.New("got nil hashfunc")
 		}
@@ -107,8 +107,8 @@ func WithHashFunc[K fmt.Stringer, V any](hf hashringx.HashFunc) options.Option[c
 
 // Sets custom merger.
 // By default newest data overrites old one.
-func WithMerger[K fmt.Stringer, V any](m Merger[K, V]) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithMerger[V any](m Merger[V]) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if m == nil {
 			return errors.New("got nil merger")
 		}
@@ -121,10 +121,10 @@ func WithMerger[K fmt.Stringer, V any](m Merger[K, V]) options.Option[createClie
 // Default is badger persistent repo.
 //
 // WARNING! Apply this opt only if you know what you are doing.
-func WithLocalRepo[K fmt.Stringer, V any](
-	repo local_kv_pairs.Repository[K, V],
-) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithLocalRepo[V any](
+	repo local_kv_pairs.Repository[V],
+) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if repo == nil {
 			return errors.New("got nil local repo")
 		}
@@ -137,11 +137,11 @@ func WithLocalRepo[K fmt.Stringer, V any](
 // Default are HTTP.
 //
 //	WARNING! Apply this opt only if you know what you are doing.
-func WithRemoteRepoAndController[K fmt.Stringer, V any](
-	repo remote_kv_pairs.Gateway[K, V],
-	ctrl Controller[K, V],
-) options.Option[createClientParams[K, V]] {
-	return func(target *createClientParams[K, V]) error {
+func WithRemoteRepoAndController[V any](
+	repo remote_kv_pairs.Gateway[V],
+	ctrl Controller[V],
+) options.Option[createClientParams[V]] {
+	return func(target *createClientParams[V]) error {
 		if repo == nil {
 			return errors.New("got nil remote repo")
 		}

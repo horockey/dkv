@@ -18,10 +18,10 @@ import (
 	"github.com/samber/lo"
 )
 
-type Processor[K fmt.Stringer, V any] struct {
-	localStorage  local_kv_pairs.Repository[K, V]
-	merger        model.Merger[K, V]
-	remoteStorage remote_kv_pairs.Gateway[K, V]
+type Processor[V any] struct {
+	localStorage  local_kv_pairs.Repository[V]
+	merger        model.Merger[V]
+	remoteStorage remote_kv_pairs.Gateway[V]
 	hostname      string
 	weight        uint
 	discovery     model.Discovery
@@ -33,10 +33,10 @@ type Processor[K fmt.Stringer, V any] struct {
 	metrics       *metrics
 }
 
-func New[K fmt.Stringer, V any](
-	localStorage local_kv_pairs.Repository[K, V],
-	merger model.Merger[K, V],
-	remoteStorage remote_kv_pairs.Gateway[K, V],
+func New[V any](
+	localStorage local_kv_pairs.Repository[V],
+	merger model.Merger[V],
+	remoteStorage remote_kv_pairs.Gateway[V],
 	hostname string,
 	weight uint,
 	discovery model.Discovery,
@@ -44,8 +44,8 @@ func New[K fmt.Stringer, V any](
 	replicas uint8,
 	revertTimeout time.Duration,
 	logger zerolog.Logger,
-) *Processor[K, V] {
-	return &Processor[K, V]{
+) *Processor[V] {
+	return &Processor[V]{
 		localStorage:  localStorage,
 		merger:        merger,
 		remoteStorage: remoteStorage,
@@ -61,11 +61,11 @@ func New[K fmt.Stringer, V any](
 	}
 }
 
-func (pr *Processor[K, V]) Metrics() []prometheus.Collector {
+func (pr *Processor[V]) Metrics() []prometheus.Collector {
 	return pr.metrics.list()
 }
 
-func (pr *Processor[K, V]) Start(ctx context.Context) error {
+func (pr *Processor[V]) Start(ctx context.Context) error {
 	// on start - check all local keys, move to others and delete on self if needed
 	// on cluster update - the same + upd hashring state (use weight from meta)
 	// only holder and R replicas allowed to hold key
@@ -131,32 +131,32 @@ func (pr *Processor[K, V]) Start(ctx context.Context) error {
 	return fmt.Errorf("running context: %w", ctx.Err())
 }
 
-func (pr *Processor[K, V]) Get(ctx context.Context, key K) (model.KVPair[K, V], error) {
+func (pr *Processor[V]) Get(ctx context.Context, key string) (model.KVPair[V], error) {
 	// check holder by hashring
 	// if self - retrieve from local (or return err for absent)
 	// if other - retrieve via gateway
 
-	owner, ok := pr.hashRing.GetNode(key.String())
+	owner, ok := pr.hashRing.GetNode(key)
 	if !ok {
-		return model.KVPair[K, V]{}, fmt.Errorf("unable to get owner for %s", key.String())
+		return model.KVPair[V]{}, fmt.Errorf("unable to get owner for %s", key)
 	}
 
 	if owner != pr.hostname {
 		kvp, err := pr.remoteStorage.Get(ctx, owner, key)
 		if err != nil {
-			return model.KVPair[K, V]{}, fmt.Errorf("getting from remote storage: %w", err)
+			return model.KVPair[V]{}, fmt.Errorf("getting from remote storage: %w", err)
 		}
 		return kvp, nil
 	}
 
 	kvp, err := pr.localStorage.Get(key)
 	if err != nil {
-		return model.KVPair[K, V]{}, fmt.Errorf("getting from local storage: %w", err)
+		return model.KVPair[V]{}, fmt.Errorf("getting from local storage: %w", err)
 	}
 	return kvp, nil
 }
 
-func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (resErr error) {
+func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (resErr error) {
 	// put to self
 	// put to R replicas
 	// OR put via remote
@@ -188,7 +188,7 @@ func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (res
 		}
 	}
 
-	kvp := model.KVPair[K, V]{
+	kvp := model.KVPair[V]{
 		Key:      key,
 		Value:    value,
 		Modified: time.Now(),
@@ -196,7 +196,7 @@ func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (res
 
 	owner, replicas, err := pr.getOwnerAndReplicas(key)
 	if err != nil {
-		return fmt.Errorf("unable to get owner and replicas for %s", key.String())
+		return fmt.Errorf("unable to get owner and replicas for %s", key)
 	}
 
 	if owner != pr.hostname {
@@ -211,7 +211,7 @@ func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (res
 	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 		return fmt.Errorf("checking tombstone: %w", err)
 	} else if tomb := time.Unix(tombTS, 0); err == nil && tomb.After(kvp.Modified) {
-		return fmt.Errorf("key %s has been tombstoned at %s", key.String(), tomb.Format(time.RFC3339))
+		return fmt.Errorf("key %s has been tombstoned at %s", key, tomb.Format(time.RFC3339))
 	}
 
 	defer revertOnErr(append(replicas, owner))
@@ -228,13 +228,13 @@ func (pr *Processor[K, V]) AddOrUpdate(ctx context.Context, key K, value V) (res
 	return nil
 }
 
-func (pr *Processor[K, V]) Remove(ctx context.Context, key K) (resErr error) {
+func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 	// remove from self
 	// remove from R replicas
 	// OR remove via remote
 	// all in 1 transaction
 
-	revert := func(nodesToRevert []string, kvp model.KVPair[K, V]) {
+	revert := func(nodesToRevert []string, kvp model.KVPair[V]) {
 		revCtx, cancel := context.WithTimeout(context.Background(), pr.revertTimeout)
 		defer cancel()
 
@@ -256,7 +256,7 @@ func (pr *Processor[K, V]) Remove(ctx context.Context, key K) (resErr error) {
 
 	owner, replicas, err := pr.getOwnerAndReplicas(key)
 	if err != nil {
-		return fmt.Errorf("unable to get owner and replicas for %s", key.String())
+		return fmt.Errorf("unable to get owner and replicas for %s", key)
 	}
 
 	if pr.hostname != owner {
@@ -284,8 +284,8 @@ func (pr *Processor[K, V]) Remove(ctx context.Context, key K) (resErr error) {
 	return nil
 }
 
-func (pr *Processor[K, V]) getOwnerAndReplicas(key K) (owner string, replicas []string, resErr error) {
-	nodes, ok := pr.hashRing.GetNodes(key.String(), min(int(pr.replicas)+1, pr.hashRing.Size()))
+func (pr *Processor[V]) getOwnerAndReplicas(key string) (owner string, replicas []string, resErr error) {
+	nodes, ok := pr.hashRing.GetNodes(key, min(int(pr.replicas)+1, pr.hashRing.Size()))
 	if !ok {
 		return "", nil, fmt.Errorf("unable to get owner from hashring")
 	}
@@ -299,7 +299,7 @@ func (pr *Processor[K, V]) getOwnerAndReplicas(key K) (owner string, replicas []
 	return o, rs, nil
 }
 
-func (pr *Processor[K, V]) moveExtraKvpsToRemotes(ctx context.Context) {
+func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 	localKeys, err := pr.localStorage.GetAllNoValue()
 	if err != nil {
 		pr.Logger.
@@ -311,21 +311,21 @@ func (pr *Processor[K, V]) moveExtraKvpsToRemotes(ctx context.Context) {
 
 	keysToMove := lo.FilterSliceToMap(
 		localKeys,
-		func(el model.KVPair[K, V]) (string, string, bool) {
-			host, ok := pr.hashRing.GetNode(el.Key.String())
+		func(el model.KVPair[V]) (string, string, bool) {
+			host, ok := pr.hashRing.GetNode(el.Key)
 			if !ok || host == pr.hostname {
 				return "", "", false
 			}
-			return el.Key.String(), host, true
+			return el.Key, host, true
 		},
 	)
 
 	for _, kvp := range localKeys {
-		if !slices.Contains(lo.Keys(keysToMove), kvp.Key.String()) {
+		if !slices.Contains(lo.Keys(keysToMove), kvp.Key) {
 			continue
 		}
 
-		host := keysToMove[kvp.Key.String()]
+		host := keysToMove[kvp.Key]
 		remoteKVP, err := pr.remoteStorage.GetNoValue(ctx, host, kvp.Key)
 		if err != nil {
 			pr.Logger.

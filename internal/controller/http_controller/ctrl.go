@@ -11,27 +11,26 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/horockey/dkv/internal/controller/http_controller/dto"
-	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
 	"github.com/horockey/go-toolbox/http_helpers"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
 
-type HttpController[K fmt.Stringer, V any] struct {
+type HttpController[V any] struct {
 	serv    *http.Server
 	apiKey  string
-	proc    *processor.Processor[K, V]
+	proc    *processor.Processor[V]
 	logger  zerolog.Logger
 	metrics *metrics
 }
 
-func New[K fmt.Stringer, V any](
+func New[V any](
 	addr string,
 	apiKey string,
 	logger zerolog.Logger,
-) *HttpController[K, V] {
-	ctrl := HttpController[K, V]{
+) *HttpController[V] {
+	ctrl := HttpController[V]{
 		serv: &http.Server{
 			Addr: addr,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,11 +57,11 @@ func New[K fmt.Stringer, V any](
 	return &ctrl
 }
 
-func (ctrl *HttpController[K, V]) Metrics() []prometheus.Collector {
+func (ctrl *HttpController[V]) Metrics() []prometheus.Collector {
 	return ctrl.metrics.list()
 }
 
-func (ctrl *HttpController[K, V]) Start(ctx context.Context, pr *processor.Processor[K, V]) (resErr error) {
+func (ctrl *HttpController[V]) Start(ctx context.Context, pr *processor.Processor[V]) (resErr error) {
 	ctrl.proc = pr
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -96,7 +95,7 @@ func (ctrl *HttpController[K, V]) Start(ctx context.Context, pr *processor.Proce
 	}
 }
 
-func (ctrl *HttpController[K, V]) authMW(next http.Handler) http.Handler {
+func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Header.Get("X-Api-Key") != ctrl.apiKey {
 			w.WriteHeader(http.StatusForbidden)
@@ -105,7 +104,7 @@ func (ctrl *HttpController[K, V]) authMW(next http.Handler) http.Handler {
 	})
 }
 
-func (ctrl *HttpController[K, V]) getKVKeyHandler(w http.ResponseWriter, req *http.Request) {
+func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.Request) {
 	key, found := mux.Vars(req)["key"]
 	if !found {
 		err := errors.New("missing key")
@@ -114,9 +113,7 @@ func (ctrl *HttpController[K, V]) getKVKeyHandler(w http.ResponseWriter, req *ht
 		return
 	}
 
-	//nolint: forcetypeassert, errcheck
-	k := fmt.Stringer(model.MockStringer(key)).(K)
-	kvp, err := ctrl.proc.Get(req.Context(), k)
+	kvp, err := ctrl.proc.Get(req.Context(), key)
 	if err != nil {
 		ctrl.logger.
 			Error().
@@ -144,7 +141,7 @@ func (ctrl *HttpController[K, V]) getKVKeyHandler(w http.ResponseWriter, req *ht
 	_ = http_helpers.RespondOK(w, dtoKV)
 }
 
-func (ctrl *HttpController[K, V]) deleteKVKeyHandler(w http.ResponseWriter, req *http.Request) {
+func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *http.Request) {
 	key, found := mux.Vars(req)["key"]
 	if !found {
 		err := errors.New("missing key")
@@ -153,9 +150,7 @@ func (ctrl *HttpController[K, V]) deleteKVKeyHandler(w http.ResponseWriter, req 
 		return
 	}
 
-	//nolint: forcetypeassert, errcheck
-	k := fmt.Stringer(model.MockStringer(key)).(K)
-	if err := ctrl.proc.Remove(req.Context(), k); err != nil {
+	if err := ctrl.proc.Remove(req.Context(), key); err != nil {
 		ctrl.logger.
 			Error().
 			Err(fmt.Errorf("deleting kvp from proc: %w", err)).
@@ -167,7 +162,7 @@ func (ctrl *HttpController[K, V]) deleteKVKeyHandler(w http.ResponseWriter, req 
 	_ = http_helpers.RespondOK(w, nil)
 }
 
-func (ctrl *HttpController[K, V]) postKVHandler(w http.ResponseWriter, req *http.Request) {
+func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Request) {
 	dtoKV := dto.KV{}
 	if err := json.NewDecoder(req.Body).Decode(&dtoKV); err != nil {
 		ctrl.logger.
@@ -178,7 +173,7 @@ func (ctrl *HttpController[K, V]) postKVHandler(w http.ResponseWriter, req *http
 		return
 	}
 
-	kvp, err := dto.KVToModel[K, V](dtoKV)
+	kvp, err := dto.KVToModel[V](dtoKV)
 	if err != nil {
 		ctrl.logger.
 			Error().

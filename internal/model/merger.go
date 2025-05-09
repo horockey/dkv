@@ -1,18 +1,16 @@
 package model
 
-import "fmt"
-
-type Merger[K fmt.Stringer, V any] interface {
-	Merge(a, b KVPair[K, V]) KVPair[K, V]
+type Merger[V any] interface {
+	Merge(a, b KVPair[V]) KVPair[V]
 }
 
-type MergeFunc[K fmt.Stringer, V any] func(a, b KVPair[K, V]) KVPair[K, V]
+type MergeFunc[V any] func(a, b KVPair[V]) KVPair[V]
 
-func (mf MergeFunc[K, V]) Merge(a, b KVPair[K, V]) KVPair[K, V] {
+func (mf MergeFunc[V]) Merge(a, b KVPair[V]) KVPair[V] {
 	return mf(a, b)
 }
 
-func LastTsMerge[K fmt.Stringer, V any](a, b KVPair[K, V]) KVPair[K, V] {
+func LastTsMerge[V any](a, b KVPair[V]) KVPair[V] {
 	if a.Modified.After(b.Modified) {
 		return a
 	}
