@@ -100,17 +100,21 @@ func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Header.Get("X-Api-Key") != ctrl.apiKey {
 			w.WriteHeader(http.StatusForbidden)
+			ctrl.metrics.errProcessCnt.Inc()
 		}
 		next.ServeHTTP(w, req)
 	})
 }
 
 func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.Request) {
+	ctrl.metrics.requestsCnt.Inc()
+
 	key, found := mux.Vars(req)["key"]
 	if !found {
 		err := errors.New("missing key")
 		ctrl.logger.Error().Err(err).Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusBadRequest, err)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
@@ -122,9 +126,11 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 			Send()
 		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
+			ctrl.metrics.errProcessCnt.Inc()
 			return
 		}
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
@@ -140,24 +146,30 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 			Err(fmt.Errorf("converting model kvp to dto: %w", err)).
 			Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
 	_ = http_helpers.RespondOK(w, dtoKV)
+	ctrl.metrics.successProcessCnt.Inc()
 }
 
 func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *http.Request) {
+	ctrl.metrics.requestsCnt.Inc()
+
 	key, found := mux.Vars(req)["key"]
 	if !found {
 		err := errors.New("missing key")
 		ctrl.logger.Error().Err(err).Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusBadRequest, err)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
 	if err := ctrl.proc.Remove(req.Context(), key); err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
+			ctrl.metrics.errProcessCnt.Inc()
 			return
 		}
 
@@ -166,13 +178,17 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 			Err(fmt.Errorf("deleting kvp from proc: %w", err)).
 			Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
 	_ = http_helpers.RespondOK(w, nil)
+	ctrl.metrics.successProcessCnt.Inc()
 }
 
 func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Request) {
+	ctrl.metrics.requestsCnt.Inc()
+
 	dtoKV := dto.KV{}
 	if err := json.NewDecoder(req.Body).Decode(&dtoKV); err != nil {
 		ctrl.logger.
@@ -180,6 +196,7 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 			Err(fmt.Errorf("decoding body dto: %w", err)).
 			Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
@@ -190,6 +207,7 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 			Err(fmt.Errorf("converting dto to model: %w", err)).
 			Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
@@ -200,6 +218,7 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 	); err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
+			ctrl.metrics.errProcessCnt.Inc()
 			return
 		}
 
@@ -208,8 +227,10 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 			Err(fmt.Errorf("setting kvp to proc: %w", err)).
 			Send()
 		_ = http_helpers.RespondWithErr(w, http.StatusInternalServerError, nil)
+		ctrl.metrics.errProcessCnt.Inc()
 		return
 	}
 
 	_ = http_helpers.RespondOK(w, nil)
+	ctrl.metrics.successProcessCnt.Inc()
 }

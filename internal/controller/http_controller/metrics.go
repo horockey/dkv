@@ -13,7 +13,7 @@ type metrics struct {
 }
 
 func newMetrics() *metrics {
-	const ss = "http_rcontroller"
+	const ss = "http_controller"
 	return &metrics{
 		handleTimeHist: prometheus.NewHistogram(*prometheus_helpers.NewHistOpts(
 			"handle_time_hist",

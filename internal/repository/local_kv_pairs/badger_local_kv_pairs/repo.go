@@ -300,7 +300,7 @@ func (repo *badgerLocalKVPairs[V]) CheckTombstone(key string) (ts int64, resErr 
 
 		return nil
 	}); err != nil {
-		return 0, fmt.Errorf("repforming view txn: %w", err)
+		return 0, fmt.Errorf("performing view txn: %w", err)
 	}
 
 	return ts, nil
