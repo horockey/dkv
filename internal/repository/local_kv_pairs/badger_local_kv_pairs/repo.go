@@ -161,21 +161,20 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 		oldKVPItem, err := txn.Get([]byte(kvp.Key.String() + withValueSuffix))
 		oldKVP := model.KVPair[K, V]{}
 
-		if err := oldKVPItem.Value(func(val []byte) error {
-			if err := gob.
-				NewDecoder(bytes.NewBuffer(val)).
-				Decode(&oldKVP); err != nil {
-				return fmt.Errorf("decoding gob: %w", err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("getting value of modItem: %w", err)
-		}
-
 		switch {
 		case errors.Is(err, badger.ErrKeyNotFound):
 			break
 		case err == nil:
+			if err := oldKVPItem.Value(func(val []byte) error {
+				if err := gob.
+					NewDecoder(bytes.NewBuffer(val)).
+					Decode(&oldKVP); err != nil {
+					return fmt.Errorf("decoding gob: %w", err)
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("getting value of modItem: %w", err)
+			}
 
 			if oldKVP.Modified.After(kvp.Modified) {
 				return local_kv_pairs.KvTooOldError{
