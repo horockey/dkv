@@ -135,6 +135,7 @@ func (pr *Processor[V]) Get(ctx context.Context, key string) (model.KVPair[V], e
 	// check holder by hashring
 	// if self - retrieve from local (or return err for absent)
 	// if other - retrieve via gateway
+	pr.Logger.Debug().Str("action", "get").Str("key", key).Send()
 
 	owner, ok := pr.hashRing.GetNode(key)
 	if !ok {
@@ -161,6 +162,8 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 	// put to R replicas
 	// OR put via remote
 	// all in 1 transaction
+
+	pr.Logger.Debug().Str("action", "addOrUpdate").Str("key", key).Send()
 
 	revertOnErr := func(nodesToRevert []string) {
 		if resErr == nil {
@@ -233,6 +236,8 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 	// remove from R replicas
 	// OR remove via remote
 	// all in 1 transaction
+
+	pr.Logger.Debug().Str("action", "remove").Str("key", key).Send()
 
 	revert := func(nodesToRevert []string, kvp model.KVPair[V]) {
 		revCtx, cancel := context.WithTimeout(context.Background(), pr.revertTimeout)
