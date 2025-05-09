@@ -202,6 +202,17 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 		return fmt.Errorf("unable to get owner and replicas for %s", key)
 	}
 
+	rs := zerolog.Arr()
+	for _, el := range replicas {
+		rs = rs.Str(el)
+	}
+	pr.Logger.
+		Debug().
+		Str("key", key).
+		Str("owner", owner).
+		Array("replicas", rs).
+		Send()
+
 	if owner != pr.hostname {
 		if err := pr.remoteStorage.AddOrUpdate(ctx, owner, kvp); err != nil {
 			return fmt.Errorf("setting to remote repo (%s): %w", owner, err)
