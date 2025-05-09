@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/dgraph-io/badger"
@@ -16,8 +17,8 @@ import (
 var _ local_kv_pairs.Repository[fmt.Stringer, any] = &badgerLocalKVPairs[fmt.Stringer, any]{}
 
 const (
-	modSuffix       = "---modified---"
 	tombstoneSuffix = "---tombstone---"
+	withValueSuffix = "---with_value---"
 )
 
 type badgerLocalKVPairs[K fmt.Stringer, V any] struct {
@@ -62,7 +63,7 @@ func (repo *badgerLocalKVPairs[K, V]) Get(key K) (resKV model.KVPair[K, V], resE
 		Key: key,
 	}
 	if err := repo.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key.String()))
+		item, err := txn.Get([]byte(key.String() + withValueSuffix))
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
 				return local_kv_pairs.KeyNotFoundError{Key: key.String()}
@@ -73,32 +74,13 @@ func (repo *badgerLocalKVPairs[K, V]) Get(key K) (resKV model.KVPair[K, V], resE
 		if err := item.Value(func(val []byte) error {
 			if err := gob.
 				NewDecoder(bytes.NewBuffer(val)).
-				Decode(&res.Value); err != nil {
+				Decode(&res); err != nil {
 				return fmt.Errorf("decoding gob: %w", err)
 			}
 			return nil
 		}); err != nil {
 			return fmt.Errorf("getting value: %w", err)
 		}
-
-		modItem, err := txn.Get([]byte(key.String() + modSuffix))
-		if err != nil {
-			return fmt.Errorf("getting modItem: %w", err)
-		}
-
-		var modUnix int64
-		if err := modItem.Value(func(val []byte) error {
-			if err := gob.
-				NewDecoder(bytes.NewBuffer(val)).
-				Decode(&modUnix); err != nil {
-				return fmt.Errorf("decoding gob: %w", err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("getting value of modItem: %w", err)
-		}
-
-		res.Modified = time.Unix(modUnix, 0)
 
 		return nil
 	}); err != nil {
@@ -129,7 +111,7 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V
 		Key: key,
 	}
 	if err := repo.db.View(func(txn *badger.Txn) error {
-		_, err := txn.Get([]byte(key.String()))
+		item, err := txn.Get([]byte(key.String()))
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
 				return local_kv_pairs.KeyNotFoundError{Key: key.String()}
@@ -137,24 +119,16 @@ func (repo *badgerLocalKVPairs[K, V]) GetNoValue(key K) (resKV model.KVPair[K, V
 			return fmt.Errorf("getting item: %w", err)
 		}
 
-		modItem, err := txn.Get([]byte(key.String() + modSuffix))
-		if err != nil {
-			return fmt.Errorf("getting modItem: %w", err)
-		}
-
-		var modUnix int64
-		if err := modItem.Value(func(val []byte) error {
+		if err := item.Value(func(val []byte) error {
 			if err := gob.
 				NewDecoder(bytes.NewBuffer(val)).
-				Decode(&modUnix); err != nil {
+				Decode(&res); err != nil {
 				return fmt.Errorf("decoding gob: %w", err)
 			}
 			return nil
 		}); err != nil {
-			return fmt.Errorf("getting value of modItem: %w", err)
+			return fmt.Errorf("getting value: %w", err)
 		}
-
-		res.Modified = time.Unix(modUnix, 0)
 
 		return nil
 	}); err != nil {
@@ -184,84 +158,60 @@ func (repo *badgerLocalKVPairs[K, V]) AddOrUpdate(kvp model.KVPair[K, V], mf mod
 	}(time.Now())
 
 	if err := repo.db.Update(func(txn *badger.Txn) error {
-		var inRepoTs time.Time
-		modItem, err := txn.Get([]byte(kvp.Key.String() + modSuffix))
+		oldKVPItem, err := txn.Get([]byte(kvp.Key.String() + withValueSuffix))
+		oldKVP := model.KVPair[K, V]{}
+
+		if err := oldKVPItem.Value(func(val []byte) error {
+			if err := gob.
+				NewDecoder(bytes.NewBuffer(val)).
+				Decode(&oldKVP); err != nil {
+				return fmt.Errorf("decoding gob: %w", err)
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("getting value of modItem: %w", err)
+		}
 
 		switch {
 		case errors.Is(err, badger.ErrKeyNotFound):
 			break
 		case err == nil:
-			var modUnix int64
 
-			if err := modItem.Value(func(val []byte) error {
-				if err := gob.
-					NewDecoder(bytes.NewBuffer(val)).
-					Decode(&modUnix); err != nil {
-					return fmt.Errorf("decoding gob: %w", err)
-				}
-				return nil
-			}); err != nil {
-				return fmt.Errorf("getting value of modItem: %w", err)
-			}
-
-			inRepoTs = time.Unix(modUnix, 0)
-			if inRepoTs.After(kvp.Modified) {
+			if oldKVP.Modified.After(kvp.Modified) {
 				return local_kv_pairs.KvTooOldError{
 					Key:         kvp.Key.String(),
 					InsertingTs: kvp.Modified,
-					InRepoTs:    inRepoTs,
+					InRepoTs:    oldKVP.Modified,
 				}
 			}
 		}
 
-		var oldValue V = *new(V)
-
-		item, err := txn.Get([]byte(kvp.Key.String()))
-		switch {
-		case errors.Is(err, badger.ErrKeyNotFound):
-			break
-		case err != nil:
-			return fmt.Errorf("getting item: %w", err)
-		default:
-			if err := item.Value(func(val []byte) error {
-				if err := gob.
-					NewDecoder(bytes.NewBuffer(val)).
-					Decode(&oldValue); err != nil {
-					return fmt.Errorf("decoding gob: %w", err)
-				}
-				return nil
-			}); err != nil {
-				return fmt.Errorf("getting value: %w", err)
-			}
-		}
-
-		mergedKvp := mf.Merge(
-			model.KVPair[K, V]{
-				Key:      kvp.Key,
-				Value:    oldValue,
-				Modified: inRepoTs,
-			},
-			kvp,
-		)
+		mergedKvp := mf.Merge(oldKVP, kvp)
 
 		buf := bytes.NewBuffer(nil)
 		if err := gob.
 			NewEncoder(buf).
-			Encode(mergedKvp.Value); err != nil {
+			Encode(mergedKvp); err != nil {
 			return fmt.Errorf("encoding gob: %w", err)
 		}
 
-		val := bytes.Clone(buf.Bytes())
+		data := slices.Clone(buf.Bytes())
+
 		buf.Reset()
-		if err := txn.Set([]byte(mergedKvp.Key.String()), val); err != nil {
+		if err := txn.Set([]byte(mergedKvp.Key.String()+withValueSuffix), data); err != nil {
 			return fmt.Errorf("setting item to db: %w", err)
 		}
 
-		if err := gob.NewEncoder(buf).Encode(mergedKvp.Modified.Unix()); err != nil {
-			return fmt.Errorf("encoding modItem: %w", err)
+		if err := gob.
+			NewEncoder(buf).
+			Encode(model.KVPair[K, V]{
+				Key:      mergedKvp.Key,
+				Modified: mergedKvp.Modified,
+			}); err != nil {
+			return fmt.Errorf("encoding item: %w", err)
 		}
-		if err := txn.Set([]byte(mergedKvp.Key.String()+modSuffix), buf.Bytes()); err != nil {
-			return fmt.Errorf("setting modItem to db: %w", err)
+		if err := txn.Set([]byte(mergedKvp.Key.String()), buf.Bytes()); err != nil {
+			return fmt.Errorf("setting item to db: %w", err)
 		}
 
 		return nil
@@ -291,7 +241,7 @@ func (repo *badgerLocalKVPairs[K, V]) Remove(key K) (resErr error) {
 			return fmt.Errorf("deleting item: %w", err)
 		}
 
-		if err := txn.Delete([]byte(key.String() + modSuffix)); err != nil {
+		if err := txn.Delete([]byte(key.String() + withValueSuffix)); err != nil {
 			return fmt.Errorf("deleting modItem: %w", err)
 		}
 
@@ -379,37 +329,24 @@ func (repo *badgerLocalKVPairs[K, V]) GetAllNoValue() (resKVs []model.KVPair[K, 
 		for it.Rewind(); it.Valid(); it.Next() {
 
 			//nolint: forcetypeassert, errcheck
-			key := fmt.Stringer(model.MockStringer(string(it.Item().Key()))).(K)
+			// key := fmt.Stringer(model.MockStringer(string(it.Item().Key()))).(K)
 
-			_, err := txn.Get([]byte(key.String()))
-			if err != nil {
-				if errors.Is(err, badger.ErrKeyNotFound) {
-					return local_kv_pairs.KeyNotFoundError{Key: key.String()}
-				}
-				return fmt.Errorf("getting item: %w", err)
-			}
+			item := it.Item()
 
-			modItem, err := txn.Get([]byte(key.String() + modSuffix))
-			if err != nil {
-				return fmt.Errorf("getting modItem: %w", err)
-			}
+			kv := model.KVPair[K, V]{}
 
-			var modUnix int64
-			if err := modItem.Value(func(val []byte) error {
+			if err := item.Value(func(val []byte) error {
 				if err := gob.
 					NewDecoder(bytes.NewBuffer(val)).
-					Decode(&modUnix); err != nil {
+					Decode(&kv); err != nil {
 					return fmt.Errorf("decoding gob: %w", err)
 				}
 				return nil
 			}); err != nil {
-				return fmt.Errorf("getting value of modItem: %w", err)
+				return fmt.Errorf("getting value: %w", err)
 			}
 
-			res = append(res, model.KVPair[K, V]{
-				Key:      key,
-				Modified: time.Unix(modUnix, 0),
-			})
+			resKVs = append(resKVs, kv)
 
 		}
 		return nil
