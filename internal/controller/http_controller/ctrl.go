@@ -156,6 +156,11 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 	}
 
 	if err := ctrl.proc.Remove(req.Context(), key); err != nil {
+		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
+			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
+			return
+		}
+
 		ctrl.logger.
 			Error().
 			Err(fmt.Errorf("deleting kvp from proc: %w", err)).
@@ -193,6 +198,11 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		kvp.Key,
 		kvp.Value,
 	); err != nil {
+		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
+			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
+			return
+		}
+
 		ctrl.logger.
 			Error().
 			Err(fmt.Errorf("setting kvp to proc: %w", err)).
