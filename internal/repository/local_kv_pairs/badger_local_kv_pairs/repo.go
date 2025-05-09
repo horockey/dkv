@@ -331,6 +331,11 @@ func (repo *badgerLocalKVPairs[V]) GetAllNoValue() (resKVs []model.KVPair[V], re
 
 			kv := model.KVPair[V]{}
 
+			if bytes.HasSuffix(item.Key(), []byte(tombstoneSuffix)) ||
+				bytes.HasSuffix(item.Key(), []byte(withValueSuffix)) {
+				continue
+			}
+
 			if err := item.Value(func(val []byte) error {
 				if err := gob.
 					NewDecoder(bytes.NewBuffer(val)).
