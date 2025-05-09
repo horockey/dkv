@@ -213,7 +213,7 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 		Array("replicas", rs).
 		Send()
 
-	if owner != pr.hostname {
+	if owner != pr.hostname && !slices.Contains(replicas, pr.hostname) {
 		if err := pr.remoteStorage.AddOrUpdate(ctx, owner, kvp); err != nil {
 			return fmt.Errorf("setting to remote repo (%s): %w", owner, err)
 		}
@@ -231,6 +231,10 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 	defer revertOnErr(append(replicas, owner))
 	if err := pr.localStorage.AddOrUpdate(kvp, pr.merger); err != nil {
 		return fmt.Errorf("setting to local repo: %w", err)
+	}
+
+	if owner != pr.hostname {
+		return nil
 	}
 
 	// prevent self-writing loop
