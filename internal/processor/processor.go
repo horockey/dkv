@@ -233,6 +233,9 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 		return fmt.Errorf("setting to local repo: %w", err)
 	}
 
+	// prevent self-writing loop
+	replicas = lo.Filter(replicas, func(el string, _ int) bool { return el != pr.hostname })
+
 	for _, node := range replicas {
 		if err := pr.remoteStorage.AddOrUpdate(ctx, node, kvp); err != nil {
 			return fmt.Errorf("setting to remote repo (%s): %w", node, err)
