@@ -4,93 +4,7 @@
 
 ## Основные классы
 
-```puml
-
-struct Client{
-    # Controller
-    + Start(ctx) error
-    + Get(key) (KVPair, error)
-    + AddOrUpdate(key, val) error
-    + Remove(key) error
-    + Metrics() []metrics
-}
-
-struct Processor{
-    # Merger
-    # LocalKVRepo
-    # RemoteKVRepo
-    # Hashring
-    # Discovery
-
-    + Start(ctx) error
-    + Get(key) (KVPair, error)
-    + AddOrUpdate(key, val) error
-    + Remove(key) error
-    + Metrics() []metrics
-}
-
-interface Discovery{
-    + Register(ctx, hostname, updCallBack, meta) error
-    + Deregister(ctx) error
-    + GetNodes(ctx) ([]Node, error)
-}
-
-struct Hashring{
-    + HashFunc
-}
-
-Interface HashFunc{
-    + func([]byte) HashKey
-}
-
-Hashring ..o HashFunc: uses
-
-interface Merger{
-    + Merge(KVPair, KVPair) KVPair
-}
-struct LastTsMerger
-LastTsMerger .up.|> Merger: implements
-
-interface Controller{
-    + Start(ctx, Processor) error
-    + Metrics() []metrics
-}
-struct HttpController{
-    # Processsor
-}
-HttpController .up.|> Controller: implements
-
-interface LocalKVRepo{
-    + Get(key) (VPair, error)
-    + GetNoValue(key) (KVPair, error)
-    + AddOrUpdate(KVPair, Merger) error
-    + Remove(key) error
-    + CheckTombstone(key) (ts, err)
-    + GetAllNoValue() ([]KVPair, error)
-    + Metrics() []metrics
-}
-struct BadgerLocalKVRepo
-BadgerLocalKVRepo .up.|> LocalKVRepo: implements
-
-interface RemoteKVRepo{
-    + Get(ctx, hostname, key) (KVPair, error)
-    + GetNoValue(ctx, hostname, key) (KVPair, error)
-    + AddOrUpdate(ctx, hostname, KVPair) error
-    + Remove(ctx, hostname, key) error
-    + Metrics() []metrics
-}
-struct HttpRemoteKVRepo
-HttpRemoteKVRepo .up.|> RemoteKVRepo: implements
-
-Client --|> Processor: extends
-Client -left-o Controller: uses
-Controller --o Processor: uses
-Processor --o Merger: uses
-Processor --o LocalKVRepo: uses
-Processor --o RemoteKVRepo: uses
-Processor --o Hashring: uses
-Processor --o Discovery: uses
-```
+![Classes](./docs/classes.png)
 
 * **LocalKVRepo** - интерфейс локального хранилища. К нему будут проходить обращения, когда текущий узел будет для ключа держателем или репликой.
 
@@ -275,31 +189,4 @@ func main() {
 
 ## Диаграмма последовательности
 
-```plantuml
-Participant "Client\nOR\nHTTP controller" as CL
-Entity Processor
-Entity Hashring
-Database LocalKVRepo
-Entity RemoteKVRepo
-Entity Merger
-
-CL --> Processor: CRUD операция
-Processor <--> Hashring: Получить держателя\nи реплики
-
-alt Мы не держатель и не реплика
-    Processor --> RemoteKVRepo: Передать держателю
-end
-alt Мы держатель
-    Processor --> LocalKVRepo: Провести операцию
-    Processor --> RemoteKVRepo: Провести на репликах
-end
-alt Мы реплика
-    Processor --> LocalKVRepo: Провести операцию
-end
-
-alt Операция записи
-    LocalKVRepo <--> Merger: Произвести слияние\nстарой и новой версии
-end
-
-CL <-- Processor: Результат выполнения
-```
+![Seq](./docs/seq.png)
