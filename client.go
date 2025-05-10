@@ -24,11 +24,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type (
-	Discovery = model.Discovery
-	Node      = model.Node
-)
-
 type Client[V any] struct {
 	*processor.Processor[V]
 	localRepo  local_kv_pairs.Repository[V]

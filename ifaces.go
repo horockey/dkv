@@ -10,6 +10,8 @@ import (
 type (
 	Processor[V any] = processor.Processor[V]
 	Merger[V any]    = model.Merger[V]
+	Discovery        = model.Discovery
+	Node             = model.Node
 )
 
 type Controller[V any] interface {
