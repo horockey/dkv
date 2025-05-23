@@ -1,0 +1,88 @@
+@startuml classes
+!theme blueprint
+' skinparam classFontSize 20
+skinparam classAttributeFontSize 50
+skinparam arrowFontSize 50
+' skinparam monochrome 
+
+struct Client{
+    # Controller
+    + Start(ctx) error
+    + Get(key) (KVPair, error)
+    + AddOrUpdate(key, val) error
+    + Remove(key) error
+    + Metrics() []metrics
+}
+
+struct Processor{
+    # Merger
+    # LocalKVRepo
+    # RemoteKVRepo
+    # Hashring
+    # Discovery
+
+    + Start(ctx) error
+    + Get(key) (KVPair, error)
+    + AddOrUpdate(key, val) error
+    + Remove(key) error
+    + Metrics() []metrics
+}
+
+interface Discovery{
+    + Register(ctx, hostname, updCallBack, meta) error
+    + Deregister(ctx) error
+    + GetNodes(ctx) ([]Node, error)
+}
+
+struct Hashring{
+    # HashFunc
+    + GetOwnerAndReplicas(key)([]owner, error)
+    + AddNode(node, weight) error
+    + RemoveNode(node) error
+}
+
+Interface HashFunc{
+    + func([]byte) HashKey
+}
+
+
+Hashring --o HashFunc
+
+interface Merger{
+    + Merge(KVPair, KVPair) KVPair
+}
+
+interface Controller{
+    + Start(ctx, Processor) error
+    + Metrics() []metrics
+}
+
+
+interface LocalKVRepo{
+    + Get(key) (VPair, error)
+    + GetNoValue(key) (KVPair, error)
+    + AddOrUpdate(KVPair, Merger) error
+    + Remove(key) error
+    + CheckTombstone(key) (ts, err)
+    + GetAllNoValue() ([]KVPair, error)
+    + Metrics() []metrics
+}
+
+interface RemoteKVRepo{
+    + Get(ctx, hostname, key) (KVPair, error)
+    + GetNoValue(ctx, hostname, key) (KVPair, error)
+    + AddOrUpdate(ctx, hostname, KVPair) error
+    + Remove(ctx, hostname, key) error
+    + Metrics() []metrics
+}
+
+
+Client --|> Processor: extends
+Client -left-o Controller
+Controller --o Processor
+Processor --o Merger
+Processor -left-o LocalKVRepo
+Processor --o RemoteKVRepo
+Processor -right-o Hashring
+Processor -up-o Discovery
+@enduml
