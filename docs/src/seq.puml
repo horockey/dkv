@@ -7,21 +7,33 @@ Entity RemoteKVRepo
 Entity Merger
 
 CL --> Processor: CRUD операция
-Processor <--> Hashring: Получить держателя\nи реплики
+Processor --> Hashring: Запрос держателя\nи реплик
+Processor <-- Hashring: Держатель\nи реплики
 
-alt Мы не держатель и не реплика
-    Processor --> RemoteKVRepo: Передать держателю
+alt Мы не держатель
+    alt Мы реплика, запрос от держателя
+        Processor --> LocalKVRepo: Провести операцию
+    else
+        Processor --> RemoteKVRepo: Передать запрос держателю
+        Processor <-- RemoteKVRepo: Получить ответ от держателя
+    end
 end
 alt Мы держатель
-    Processor --> LocalKVRepo: Провести операцию
-    Processor --> RemoteKVRepo: Провести на репликах
-end
-alt Мы реплика
-    Processor --> LocalKVRepo: Провести операцию
+    Processor --> LocalKVRepo: Провести операцию локально
+    Processor <-- LocalKVRepo: Результат
+    Processor --> RemoteKVRepo: Провести операцию на репликах
+    Processor <-- RemoteKVRepo: Результат
+    alt Что-то пошло не так
+        Processor --> RemoteKVRepo: Откат на репликах
+        Processor --> LocalKVRepo: Откат локально
+
+    end
 end
 
+
 alt Операция записи
-    LocalKVRepo <--> Merger: Произвести слияние\nстарой и новой версии
+    LocalKVRepo --> Merger: Произвести слияние\nстарой и новой версии
+    LocalKVRepo <-- Merger: Получить слитую версию
 end
 
 CL <-- Processor: Результат выполнения
