@@ -354,6 +354,8 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 		},
 	)
 
+	pr.Logger.Debug().Int("local_keys", len(localKeys)).Int("moving_keys", len(keysToMove)).Send()
+
 	for _, kvp := range localKeys {
 		if !slices.Contains(lo.Keys(keysToMove), kvp.Key) {
 			continue
