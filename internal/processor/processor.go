@@ -359,6 +359,9 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 		}
 
 		host := keysToMove[kvp.Key]
+
+		pr.Logger.Warn().Str("new_holder", host).Str("key", kvp.Key).Msg("moving to new holder")
+
 		remoteKVP, err := pr.remoteStorage.GetNoValue(ctx, host, kvp.Key)
 		if err != nil {
 			pr.Logger.
@@ -370,6 +373,12 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 
 		if remoteKVP.Modified.After(kvp.Modified) {
 			// newer version on remote
+			if err := pr.localStorage.Remove(kvp.Key); err != nil {
+				pr.Logger.
+					Error().
+					Err(fmt.Errorf("removing from local storage: %w", err)).
+					Send()
+			}
 			continue
 		}
 
