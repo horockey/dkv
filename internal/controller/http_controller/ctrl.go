@@ -46,7 +46,7 @@ func New[V any](
 		apiKey:  apiKey,
 		logger:  logger,
 		metrics: newMetrics(),
-		pool:    pond.NewPool(runtime.NumCPU()),
+		pool:    pond.NewPool(runtime.NumCPU() * 20), //nolint: mnd
 		cache: ttlcache.New[string, struct{}](
 			ttlcache.WithCapacity[string, struct{}](10_000),    //nolint: mnd
 			ttlcache.WithTTL[string, struct{}](time.Second*10), //nolint: mnd
