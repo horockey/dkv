@@ -319,7 +319,7 @@ func (repo *badgerLocalKVPairs[V]) GetAllNoValue() (resKVs []model.KVPair[V], re
 		}
 	}(time.Now())
 
-	res := []model.KVPair[V]{}
+	resKVs = []model.KVPair[V]{}
 
 	err := repo.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -356,5 +356,5 @@ func (repo *badgerLocalKVPairs[V]) GetAllNoValue() (resKVs []model.KVPair[V], re
 		return nil, fmt.Errorf("performing view txn: %w", err)
 	}
 
-	return res, nil
+	return resKVs, nil
 }
