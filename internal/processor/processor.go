@@ -90,6 +90,7 @@ func (pr *Processor[V]) Start(ctx context.Context) error {
 		ctx,
 		pr.hostname,
 		func(upd model.Node) error {
+			pr.Logger.Info().Str("state", upd.State).Str("node", upd.Hostname).Msg("processor received node update")
 			switch upd.State {
 			case model.StateDown:
 				// If already processed
