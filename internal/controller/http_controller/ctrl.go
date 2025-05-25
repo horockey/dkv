@@ -14,6 +14,7 @@ import (
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
 	"github.com/horockey/go-toolbox/http_helpers"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
@@ -24,6 +25,7 @@ type HttpController[V any] struct {
 	proc    *processor.Processor[V]
 	logger  zerolog.Logger
 	metrics *metrics
+	cache   *ttlcache.Cache[string, struct{}]
 }
 
 func New[V any](
@@ -41,6 +43,10 @@ func New[V any](
 		apiKey:  apiKey,
 		logger:  logger,
 		metrics: newMetrics(),
+		cache: ttlcache.New[string, struct{}](
+			ttlcache.WithCapacity[string, struct{}](10_000),    //nolint: mnd
+			ttlcache.WithTTL[string, struct{}](time.Second*10), //nolint: mnd
+		),
 	}
 
 	router := mux.NewRouter()
@@ -77,8 +83,16 @@ func (ctrl *HttpController[V]) Start(ctx context.Context, pr *processor.Processo
 		}
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ctrl.cache.Start()
+	}()
+
 	select {
 	case <-ctx.Done():
+		ctrl.cache.Stop()
+
 		if ctx.Err() != nil && !errors.Is(ctx.Err(), context.Canceled) {
 			resErr = errors.Join(resErr, fmt.Errorf("running context: %w", ctx.Err()))
 		}
@@ -206,6 +220,12 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		return
 	}
 
+	if item := ctrl.cache.Get(dtoKV.Key); item != nil {
+		_ = http_helpers.RespondOK(w, nil)
+		ctrl.metrics.successProcessCnt.Inc()
+		return
+	}
+
 	kvp, err := dto.KVToModel[V](dtoKV)
 	if err != nil {
 		ctrl.logger.
@@ -238,5 +258,6 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 	}
 
 	_ = http_helpers.RespondOK(w, nil)
+	ctrl.cache.Set(kvp.Key, struct{}{}, ttlcache.DefaultTTL)
 	ctrl.metrics.successProcessCnt.Inc()
 }

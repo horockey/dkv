@@ -2,13 +2,11 @@ package processor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
 	"time"
 
-	"github.com/dgraph-io/badger"
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
@@ -229,12 +227,12 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 		return nil
 	}
 
-	tombTS, err := pr.localStorage.CheckTombstone(key)
-	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-		return fmt.Errorf("checking tombstone: %w", err)
-	} else if tomb := time.Unix(tombTS, 0); err == nil && tomb.After(kvp.Modified) {
-		return fmt.Errorf("key %s has been tombstoned at %s", key, tomb.Format(time.RFC3339))
-	}
+	// tombTS, err := pr.localStorage.CheckTombstone(key)
+	// if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+	// 	return fmt.Errorf("checking tombstone: %w", err)
+	// } else if tomb := time.Unix(tombTS, 0); err == nil && tomb.After(kvp.Modified) {
+	// 	return fmt.Errorf("key %s has been tombstoned at %s", key, tomb.Format(time.RFC3339))
+	// }
 
 	// defer revertOnErr(append(replicas, owner))
 	if err := pr.localStorage.AddOrUpdate(kvp, pr.merger); err != nil {
@@ -345,12 +343,12 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 
 	keysToMove := lo.FilterSliceToMap(
 		localKeys,
-		func(el model.KVPair[V]) (string, string, bool) {
-			host, ok := pr.hashRing.GetNode(el.Key)
-			if !ok || host == pr.hostname {
-				return "", "", false
+		func(el model.KVPair[V]) (string, []string, bool) {
+			owner, repls, err := pr.getOwnerAndReplicas(el.Key)
+			if err != nil || owner == pr.hostname {
+				return "", []string{""}, false
 			}
-			return el.Key, host, true
+			return el.Key, append([]string{owner}, repls...), true
 		},
 	)
 
@@ -361,15 +359,15 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 			continue
 		}
 
-		host := keysToMove[kvp.Key]
+		hosts := keysToMove[kvp.Key]
 
-		pr.Logger.Warn().Str("new_holder", host).Str("key", kvp.Key).Msg("moving to new holder")
+		pr.Logger.Warn().Str("new_holder", hosts[0]).Str("key", kvp.Key).Msg("moving to new holder")
 
-		remoteKVP, err := pr.remoteStorage.GetNoValue(ctx, host, kvp.Key)
+		remoteKVP, err := pr.remoteStorage.GetNoValue(ctx, hosts[0], kvp.Key)
 		if err != nil {
 			pr.Logger.
 				Error().
-				Err(fmt.Errorf("getting key info from remote (%s): %w", host, err)).
+				Err(fmt.Errorf("getting key info from remote (%s): %w", hosts, err)).
 				Send()
 			continue
 		}
@@ -394,11 +392,15 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 			continue
 		}
 
-		if err := pr.remoteStorage.AddOrUpdate(ctx, host, fullLocalKVP); err != nil {
+		if err := pr.remoteStorage.AddOrUpdate(ctx, hosts[0], fullLocalKVP); err != nil {
 			pr.Logger.
 				Error().
 				Err(fmt.Errorf("putting kvp to remote: %w", err)).
 				Send()
+			continue
+		}
+
+		if slices.Contains(hosts, pr.hostname) {
 			continue
 		}
 

@@ -17,7 +17,7 @@ import (
 var _ local_kv_pairs.Repository[any] = &badgerLocalKVPairs[any]{}
 
 const (
-	tombstoneSuffix = "---tombstone---"
+	// tombstoneSuffix = "---tombstone---"
 	withValueSuffix = "---with_value---"
 )
 
@@ -244,19 +244,19 @@ func (repo *badgerLocalKVPairs[V]) Remove(key string) (resErr error) {
 			return fmt.Errorf("deleting modItem: %w", err)
 		}
 
-		buf := bytes.NewBuffer(nil)
-		if err := gob.NewEncoder(buf).Encode(time.Now().Unix()); err != nil {
-			return fmt.Errorf("encoding gob tombstone: %w", err)
-		}
+		// buf := bytes.NewBuffer(nil)
+		// if err := gob.NewEncoder(buf).Encode(time.Now().Unix()); err != nil {
+		// 	return fmt.Errorf("encoding gob tombstone: %w", err)
+		// }
 
-		e := badger.Entry{
-			Key:   []byte(key + tombstoneSuffix),
-			Value: buf.Bytes(),
-		}
+		// e := badger.Entry{
+		// 	Key:   []byte(key + tombstoneSuffix),
+		// 	Value: buf.Bytes(),
+		// }
 
-		if err := txn.SetEntry(e.WithTTL(repo.tombstonesTTL)); err != nil {
-			return fmt.Errorf("setting tombstone: %w", err)
-		}
+		// if err := txn.SetEntry(e.WithTTL(repo.tombstonesTTL)); err != nil {
+		// 	return fmt.Errorf("setting tombstone: %w", err)
+		// }
 
 		return nil
 	}); err != nil {
@@ -266,45 +266,45 @@ func (repo *badgerLocalKVPairs[V]) Remove(key string) (resErr error) {
 	return nil
 }
 
-func (repo *badgerLocalKVPairs[V]) CheckTombstone(key string) (ts int64, resErr error) {
-	defer func(ts time.Time) {
-		repo.metrics.requestsCnt.Inc()
-		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+// func (repo *badgerLocalKVPairs[V]) CheckTombstone(key string) (ts int64, resErr error) {
+// 	defer func(ts time.Time) {
+// 		repo.metrics.requestsCnt.Inc()
+// 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 
-		switch {
-		case resErr == nil:
-			repo.metrics.successProcessCnt.Inc()
-			repo.metrics.keyHitsCnt.Inc()
-		case errors.Is(resErr, badger.ErrKeyNotFound):
-			repo.metrics.keyMissesCnt.Inc()
-			fallthrough
-		default:
-			repo.metrics.errProcessCnt.Inc()
-		}
-	}(time.Now())
+// 		switch {
+// 		case resErr == nil:
+// 			repo.metrics.successProcessCnt.Inc()
+// 			repo.metrics.keyHitsCnt.Inc()
+// 		case errors.Is(resErr, badger.ErrKeyNotFound):
+// 			repo.metrics.keyMissesCnt.Inc()
+// 			fallthrough
+// 		default:
+// 			repo.metrics.errProcessCnt.Inc()
+// 		}
+// 	}(time.Now())
 
-	if err := repo.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key + tombstoneSuffix))
-		if err != nil {
-			return fmt.Errorf("getting tombstone item: %w", err)
-		}
+// 	if err := repo.db.View(func(txn *badger.Txn) error {
+// 		item, err := txn.Get([]byte(key + tombstoneSuffix))
+// 		if err != nil {
+// 			return fmt.Errorf("getting tombstone item: %w", err)
+// 		}
 
-		if err := item.Value(func(val []byte) error {
-			if err := gob.NewDecoder(bytes.NewBuffer(val)).Decode(&ts); err != nil {
-				return fmt.Errorf("decoding gob tombstone: %w", err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("getting tombstone item value: %w", err)
-		}
+// 		if err := item.Value(func(val []byte) error {
+// 			if err := gob.NewDecoder(bytes.NewBuffer(val)).Decode(&ts); err != nil {
+// 				return fmt.Errorf("decoding gob tombstone: %w", err)
+// 			}
+// 			return nil
+// 		}); err != nil {
+// 			return fmt.Errorf("getting tombstone item value: %w", err)
+// 		}
 
-		return nil
-	}); err != nil {
-		return 0, fmt.Errorf("performing view txn: %w", err)
-	}
+// 		return nil
+// 	}); err != nil {
+// 		return 0, fmt.Errorf("performing view txn: %w", err)
+// 	}
 
-	return ts, nil
-}
+// 	return ts, nil
+// }
 
 func (repo *badgerLocalKVPairs[V]) GetAllNoValue() (resKVs []model.KVPair[V], resErr error) {
 	defer func(ts time.Time) {
@@ -331,8 +331,8 @@ func (repo *badgerLocalKVPairs[V]) GetAllNoValue() (resKVs []model.KVPair[V], re
 
 			kv := model.KVPair[V]{}
 
-			if bytes.HasSuffix(item.Key(), []byte(tombstoneSuffix)) ||
-				bytes.HasSuffix(item.Key(), []byte(withValueSuffix)) {
+			if bytes.HasSuffix(item.Key(), []byte(withValueSuffix)) {
+				// || bytes.HasSuffix(item.Key(), []byte(tombstoneSuffix))
 				continue
 			}
 
