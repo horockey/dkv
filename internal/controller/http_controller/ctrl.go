@@ -158,7 +158,17 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 		}
 	})
 
-	res := <-resCh
+	var res struct {
+		pl  model.KVPair[V]
+		err error
+	}
+
+	select {
+	case res = <-resCh:
+	case <-req.Context().Done():
+		return
+	}
+
 	kvp, err := res.pl, res.err
 	if err != nil {
 		ctrl.logger.
@@ -217,7 +227,14 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 		resCh <- err
 	})
 
-	if err := <-resCh; err != nil {
+	var err error
+	select {
+	case err = <-resCh:
+	case <-req.Context().Done():
+		return
+	}
+
+	if err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()
@@ -279,7 +296,13 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		resCh <- err
 	})
 
-	if err := <-resCh; err != nil {
+	select {
+	case err = <-resCh:
+	case <-req.Context().Done():
+		return
+	}
+
+	if err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()
