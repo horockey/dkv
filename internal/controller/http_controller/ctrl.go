@@ -6,11 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 	"sync"
 	"time"
 
-	"github.com/alitto/pond/v2"
 	"github.com/gorilla/mux"
 	"github.com/horockey/dkv/internal/controller/http_controller/dto"
 	"github.com/horockey/dkv/internal/model"
@@ -28,7 +26,6 @@ type HttpController[V any] struct {
 	logger  zerolog.Logger
 	metrics *metrics
 	cache   *ttlcache.Cache[string, struct{}]
-	pool    pond.Pool
 }
 
 func New[V any](
@@ -46,7 +43,6 @@ func New[V any](
 		apiKey:  apiKey,
 		logger:  logger,
 		metrics: newMetrics(),
-		pool:    pond.NewPool(runtime.NumCPU() * 20), //nolint: mnd
 		cache: ttlcache.New[string, struct{}](
 			ttlcache.WithCapacity[string, struct{}](10_000),    //nolint: mnd
 			ttlcache.WithTTL[string, struct{}](time.Second*10), //nolint: mnd
@@ -74,8 +70,6 @@ func (ctrl *HttpController[V]) Metrics() []prometheus.Collector {
 
 func (ctrl *HttpController[V]) Start(ctx context.Context, pr *processor.Processor[V]) (resErr error) {
 	ctrl.proc = pr
-
-	defer ctrl.pool.StopAndWait()
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -142,34 +136,7 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 		return
 	}
 
-	resCh := make(chan struct {
-		pl  model.KVPair[V]
-		err error
-	}, 1)
-
-	_ = ctrl.pool.Go(func() {
-		kvp, err := ctrl.proc.Get(req.Context(), key)
-		resCh <- struct {
-			pl  model.KVPair[V]
-			err error
-		}{
-			pl:  kvp,
-			err: err,
-		}
-	})
-
-	var res struct {
-		pl  model.KVPair[V]
-		err error
-	}
-
-	select {
-	case res = <-resCh:
-	case <-req.Context().Done():
-		return
-	}
-
-	kvp, err := res.pl, res.err
+	kvp, err := ctrl.proc.Get(req.Context(), key)
 	if err != nil {
 		ctrl.logger.
 			Error().
@@ -220,21 +187,7 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 		return
 	}
 
-	resCh := make(chan error, 1)
-
-	_ = ctrl.pool.Go(func() {
-		err := ctrl.proc.Remove(req.Context(), key)
-		resCh <- err
-	})
-
-	var err error
-	select {
-	case err = <-resCh:
-	case <-req.Context().Done():
-		return
-	}
-
-	if err != nil {
+	if err := ctrl.proc.Remove(req.Context(), key); err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()
@@ -285,24 +238,11 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	resCh := make(chan error, 1)
-
-	_ = ctrl.pool.Go(func() {
-		err := ctrl.proc.AddOrUpdate(
-			req.Context(),
-			kvp.Key,
-			kvp.Value,
-		)
-		resCh <- err
-	})
-
-	select {
-	case err = <-resCh:
-	case <-req.Context().Done():
-		return
-	}
-
-	if err != nil {
+	if err := ctrl.proc.AddOrUpdate(
+		req.Context(),
+		kvp.Key,
+		kvp.Value,
+	); err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()

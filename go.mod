@@ -3,7 +3,6 @@ module github.com/horockey/dkv
 go 1.24.2
 
 require (
-	github.com/alitto/pond/v2 v2.3.4
 	github.com/dgraph-io/badger v1.6.2
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/gorilla/mux v1.8.1
