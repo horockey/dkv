@@ -1,5 +1,11 @@
 @startuml classes
-class Client{
+!theme blueprint
+' skinparam classFontSize 20
+skinparam classAttributeFontSize 50
+skinparam arrowFontSize 50
+' skinparam monochrome 
+
+struct Client{
     # Controller
     + Start(ctx) error
     + Get(key) (KVPair, error)
@@ -8,7 +14,7 @@ class Client{
     + Metrics() []metrics
 }
 
-class Processor{
+struct Processor{
     # Merger
     # LocalKVRepo
     # RemoteKVRepo
@@ -28,7 +34,7 @@ interface Discovery{
     + GetNodes(ctx) ([]Node, error)
 }
 
-class Hashring{
+struct Hashring{
     # HashFunc
     + GetOwnerAndReplicas(key)([]owner, error)
     + AddNode(node, weight) error
@@ -39,24 +45,18 @@ Interface HashFunc{
     + func([]byte) HashKey
 }
 
-entity DefaultHashFunc{
-    + func([]byte) HashKey
-}
-DefaultHashFunc .up.|> HashFunc: implements
 
-Hashring ..o HashFunc: uses
+Hashring --o HashFunc
 
 interface Merger{
     + Merge(KVPair, KVPair) KVPair
 }
-class LastTsMerger
-LastTsMerger .up.|> Merger: implements
 
 interface Controller{
     + Start(ctx, Processor) error
     + Metrics() []metrics
 }
-HttpController .right.|> Controller: implements
+
 
 interface LocalKVRepo{
     + Get(key) (VPair, error)
@@ -67,8 +67,6 @@ interface LocalKVRepo{
     + GetAllNoValue() ([]KVPair, error)
     + Metrics() []metrics
 }
-class BadgerLocalKVRepo
-BadgerLocalKVRepo .down.|> LocalKVRepo: implements
 
 interface RemoteKVRepo{
     + Get(ctx, hostname, key) (KVPair, error)
@@ -77,15 +75,14 @@ interface RemoteKVRepo{
     + Remove(ctx, hostname, key) error
     + Metrics() []metrics
 }
-class HttpRemoteKVRepo
-HttpRemoteKVRepo .up.|> RemoteKVRepo: implements
+
 
 Client --|> Processor: extends
-Client -left-o Controller: uses
-Controller --o Processor: uses
-Processor --o Merger: uses
-Processor -left-o LocalKVRepo: uses
-Processor --o RemoteKVRepo: uses
-Processor -right-o Hashring: uses
-Processor --o Discovery: uses
+Client -left-o Controller
+Controller --o Processor
+Processor --o Merger
+Processor -left-o LocalKVRepo
+Processor --o RemoteKVRepo
+Processor -right-o Hashring
+Processor -up-o Discovery
 @enduml

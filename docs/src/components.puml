@@ -1,0 +1,18 @@
+@startuml components
+
+Package "Monkeys"{
+    [Monkey1] -down- "http://localhost:7001/metrics"
+    [Monkey2] -down- "http://localhost:7002/metrics"
+    [MonkeyN] -down- "http://localhost:{7000+N}/metrics"
+
+    [Monkey1] -right[hidden]-> [Monkey2]
+    [Monkey2] -right[hidden]-> [MonkeyN]
+}
+
+[Prometheus] <-up-> "http://localhost:7001/metrics": GET
+[Prometheus] <-up-> "http://localhost:7002/metrics": GET
+[Prometheus] <-up-> "http://localhost:{7000+N}/metrics": GET
+
+[Grafana] <-up-> [Prometheus]: Get data
+
+@enduml
