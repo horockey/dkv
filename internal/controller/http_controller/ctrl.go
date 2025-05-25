@@ -61,7 +61,7 @@ func New[V any](
 	router.HandleFunc("/kv/{key}", ctrl.getKVKeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/kv/{key}", ctrl.deleteKVKeyHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/kv", ctrl.postKVHandler).Methods(http.MethodPost)
-	router.Use(ctrl.authMW, ctrl.limitGoroutines)
+	router.Use(ctrl.authMW)
 
 	ctrl.serv.Handler = router
 
@@ -127,14 +127,6 @@ func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 	})
 }
 
-func (ctrl *HttpController[V]) limitGoroutines(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		_ = ctrl.pool.Go(func() {
-			next.ServeHTTP(w, req)
-		})
-	})
-}
-
 func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.Request) {
 	ctrl.metrics.requestsCnt.Inc()
 	defer func(ts time.Time) {
@@ -150,7 +142,24 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 		return
 	}
 
-	kvp, err := ctrl.proc.Get(req.Context(), key)
+	resCh := make(chan struct {
+		pl  model.KVPair[V]
+		err error
+	}, 1)
+
+	_ = ctrl.pool.Go(func() {
+		kvp, err := ctrl.proc.Get(req.Context(), key)
+		resCh <- struct {
+			pl  model.KVPair[V]
+			err error
+		}{
+			pl:  kvp,
+			err: err,
+		}
+	})
+
+	res := <-resCh
+	kvp, err := res.pl, res.err
 	if err != nil {
 		ctrl.logger.
 			Error().
@@ -201,7 +210,14 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 		return
 	}
 
-	if err := ctrl.proc.Remove(req.Context(), key); err != nil {
+	resCh := make(chan error, 1)
+
+	_ = ctrl.pool.Go(func() {
+		err := ctrl.proc.Remove(req.Context(), key)
+		resCh <- err
+	})
+
+	if err := <-resCh; err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()
@@ -252,11 +268,18 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	if err := ctrl.proc.AddOrUpdate(
-		req.Context(),
-		kvp.Key,
-		kvp.Value,
-	); err != nil {
+	resCh := make(chan error, 1)
+
+	_ = ctrl.pool.Go(func() {
+		err := ctrl.proc.AddOrUpdate(
+			req.Context(),
+			kvp.Key,
+			kvp.Value,
+		)
+		resCh <- err
+	})
+
+	if err := <-resCh; err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()
