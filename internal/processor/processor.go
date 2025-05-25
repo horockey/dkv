@@ -173,31 +173,31 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 
 	pr.Logger.Debug().Str("action", "addOrUpdate").Str("key", key).Send()
 
-	revertOnErr := func(nodesToRevert []string) {
-		if resErr == nil {
-			return
-		}
+	// revertOnErr := func(nodesToRevert []string) {
+	// 	if resErr == nil {
+	// 		return
+	// 	}
 
-		revCtx, cancel := context.WithTimeout(context.Background(), pr.revertTimeout)
-		defer cancel()
+	// 	revCtx, cancel := context.WithTimeout(context.Background(), pr.revertTimeout)
+	// 	defer cancel()
 
-		for _, node := range nodesToRevert {
-			var err error
+	// 	for _, node := range nodesToRevert {
+	// 		var err error
 
-			if node == pr.hostname {
-				err = pr.localStorage.Remove(key)
-			} else {
-				err = pr.remoteStorage.Remove(revCtx, node, key)
-			}
+	// 		if node == pr.hostname {
+	// 			err = pr.localStorage.Remove(key)
+	// 		} else {
+	// 			err = pr.remoteStorage.Remove(revCtx, node, key)
+	// 		}
 
-			if err != nil {
-				resErr = errors.Join(resErr, fmt.Errorf("reverting on %s: %w", node, err))
-				if errors.Is(err, context.DeadlineExceeded) {
-					break
-				}
-			}
-		}
-	}
+	// 		if err != nil {
+	// 			resErr = errors.Join(resErr, fmt.Errorf("reverting on %s: %w", node, err))
+	// 			if errors.Is(err, context.DeadlineExceeded) {
+	// 				break
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	kvp := model.KVPair[V]{
 		Key:      key,
@@ -236,7 +236,7 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 		return fmt.Errorf("key %s has been tombstoned at %s", key, tomb.Format(time.RFC3339))
 	}
 
-	defer revertOnErr(append(replicas, owner))
+	// defer revertOnErr(append(replicas, owner))
 	if err := pr.localStorage.AddOrUpdate(kvp, pr.merger); err != nil {
 		return fmt.Errorf("setting to local repo: %w", err)
 	}
@@ -268,25 +268,25 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 
 	pr.Logger.Debug().Str("action", "remove").Str("key", key).Send()
 
-	revert := func(nodesToRevert []string, kvp model.KVPair[V]) {
-		revCtx, cancel := context.WithTimeout(context.Background(), pr.revertTimeout)
-		defer cancel()
+	// revert := func(nodesToRevert []string, kvp model.KVPair[V]) {
+	// 	revCtx, cancel := context.WithTimeout(context.Background(), pr.revertTimeout)
+	// 	defer cancel()
 
-		for _, node := range nodesToRevert {
-			err := pr.remoteStorage.AddOrUpdate(revCtx, node, kvp)
-			if err != nil {
-				resErr = errors.Join(resErr, fmt.Errorf("reverting on %s: %w", node, err))
-				if errors.Is(err, context.DeadlineExceeded) {
-					break
-				}
-			}
-		}
-	}
+	// 	for _, node := range nodesToRevert {
+	// 		err := pr.remoteStorage.AddOrUpdate(revCtx, node, kvp)
+	// 		if err != nil {
+	// 			resErr = errors.Join(resErr, fmt.Errorf("reverting on %s: %w", node, err))
+	// 			if errors.Is(err, context.DeadlineExceeded) {
+	// 				break
+	// 			}
+	// 		}
+	// 	}
+	// }
 
-	kvp, err := pr.Get(ctx, key)
-	if err != nil {
-		return fmt.Errorf("getting kvp for restore: %w", err)
-	}
+	// kvp, err := pr.Get(ctx, key)
+	// if err != nil {
+	// 	return fmt.Errorf("getting kvp for restore: %w", err)
+	// }
 
 	owner, replicas, err := pr.getOwnerAndReplicas(key)
 	if err != nil {
@@ -300,19 +300,19 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 		return nil
 	}
 
-	processedNodes := []string{}
+	// processedNodes := []string{}
 
 	if err := pr.localStorage.Remove(key); err != nil {
 		return fmt.Errorf("removing from local repo: %w", err)
 	}
-	processedNodes = append(processedNodes, owner)
+	// processedNodes = append(processedNodes, owner)
 
 	for _, node := range replicas {
 		if err := pr.remoteStorage.Remove(ctx, node, key); err != nil {
-			defer revert(processedNodes, kvp)
+			// defer revert(processedNodes, kvp)
 			return fmt.Errorf("removing from remote repo (%s): %w", node, err)
 		}
-		processedNodes = append(processedNodes, node)
+		// processedNodes = append(processedNodes, node)
 	}
 
 	return nil
