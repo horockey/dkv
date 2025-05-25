@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
+	"github.com/alitto/pond/v2"
 	"github.com/gorilla/mux"
 	"github.com/horockey/dkv/internal/controller/http_controller/dto"
 	"github.com/horockey/dkv/internal/model"
@@ -26,6 +28,7 @@ type HttpController[V any] struct {
 	logger  zerolog.Logger
 	metrics *metrics
 	cache   *ttlcache.Cache[string, struct{}]
+	pool    pond.Pool
 }
 
 func New[V any](
@@ -43,6 +46,7 @@ func New[V any](
 		apiKey:  apiKey,
 		logger:  logger,
 		metrics: newMetrics(),
+		pool:    pond.NewPool(runtime.NumCPU()),
 		cache: ttlcache.New[string, struct{}](
 			ttlcache.WithCapacity[string, struct{}](10_000),    //nolint: mnd
 			ttlcache.WithTTL[string, struct{}](time.Second*10), //nolint: mnd
@@ -57,7 +61,7 @@ func New[V any](
 	router.HandleFunc("/kv/{key}", ctrl.getKVKeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/kv/{key}", ctrl.deleteKVKeyHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/kv", ctrl.postKVHandler).Methods(http.MethodPost)
-	router.Use(ctrl.authMW)
+	router.Use(ctrl.authMW, ctrl.limitGoroutines)
 
 	ctrl.serv.Handler = router
 
@@ -70,6 +74,9 @@ func (ctrl *HttpController[V]) Metrics() []prometheus.Collector {
 
 func (ctrl *HttpController[V]) Start(ctx context.Context, pr *processor.Processor[V]) (resErr error) {
 	ctrl.proc = pr
+
+	defer ctrl.pool.StopAndWait()
+
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -117,6 +124,14 @@ func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 			ctrl.metrics.errProcessCnt.Inc()
 		}
 		next.ServeHTTP(w, req)
+	})
+}
+
+func (ctrl *HttpController[V]) limitGoroutines(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_ = ctrl.pool.Go(func() {
+			next.ServeHTTP(w, req)
+		})
 	})
 }
 
