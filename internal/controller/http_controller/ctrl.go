@@ -108,6 +108,9 @@ func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 
 func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.Request) {
 	ctrl.metrics.requestsCnt.Inc()
+	defer func(ts time.Time) {
+		ctrl.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+	}(time.Now())
 
 	key, found := mux.Vars(req)["key"]
 	if !found {
@@ -156,6 +159,9 @@ func (ctrl *HttpController[V]) getKVKeyHandler(w http.ResponseWriter, req *http.
 
 func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *http.Request) {
 	ctrl.metrics.requestsCnt.Inc()
+	defer func(ts time.Time) {
+		ctrl.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
+	}(time.Now())
 
 	key, found := mux.Vars(req)["key"]
 	if !found {

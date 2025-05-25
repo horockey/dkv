@@ -135,6 +135,10 @@ func (pr *Processor[V]) Get(ctx context.Context, key string) (model.KVPair[V], e
 	// check holder by hashring
 	// if self - retrieve from local (or return err for absent)
 	// if other - retrieve via gateway
+	defer func(ts time.Time) {
+		pr.metrics.hashingTimeHist.Observe(float64(time.Since(ts)))
+	}(time.Now())
+
 	pr.Logger.Debug().Str("action", "get").Str("key", key).Send()
 
 	owner, ok := pr.hashRing.GetNode(key)
@@ -162,6 +166,9 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 	// put to R replicas
 	// OR put via remote
 	// all in 1 transaction
+	defer func(ts time.Time) {
+		pr.metrics.hashingTimeHist.Observe(float64(time.Since(ts)))
+	}(time.Now())
 
 	pr.Logger.Debug().Str("action", "addOrUpdate").Str("key", key).Send()
 
@@ -254,6 +261,9 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 	// remove from R replicas
 	// OR remove via remote
 	// all in 1 transaction
+	defer func(ts time.Time) {
+		pr.metrics.hashingTimeHist.Observe(float64(time.Since(ts)))
+	}(time.Now())
 
 	pr.Logger.Debug().Str("action", "remove").Str("key", key).Send()
 
