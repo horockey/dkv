@@ -86,54 +86,6 @@ func (gw *httpRemoteKVPairs[V]) Get(
 	return kv, nil
 }
 
-func (gw *httpRemoteKVPairs[V]) GetNoValue(
-	ctx context.Context,
-	hostname string,
-	key string,
-) (res model.KVPair[V], resErr error) {
-	defer func(ts time.Time) {
-		gw.metrics.requestsCnt.Inc()
-		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
-
-		switch resErr {
-		case nil:
-			gw.metrics.successProcessCnt.Inc()
-		default:
-			gw.metrics.errProcessCnt.Inc()
-		}
-	}(time.Now())
-
-	resp, err := gw.cl.R().
-		SetContext(ctx).
-		SetPathParam("hostname", hostname).
-		SetPathParam("key", key).
-		SetQueryParam("no-value", "true").
-		Get("http://{hostname}:{port}/kv/{key}")
-	if err != nil {
-		return model.KVPair[V]{}, fmt.Errorf("executing request: %w", err)
-	}
-	switch resp.StatusCode() {
-	case http.StatusOK:
-		break
-	case http.StatusNotFound:
-		return model.KVPair[V]{}, model.KeyNotFoundError{Key: key}
-	default:
-		return model.KVPair[V]{}, fmt.Errorf("got non-ok response (%s): %s", resp.Status(), resp.String())
-	}
-
-	dtoKV := controller_dto.KV{}
-	if err := json.Unmarshal(resp.Body(), &dtoKV); err != nil {
-		return model.KVPair[V]{}, fmt.Errorf("unmarshaling json: %w", err)
-	}
-
-	kv, err := controller_dto.KVToModel[V](dtoKV)
-	if err != nil {
-		return model.KVPair[V]{}, fmt.Errorf("converting dto kv to model: %w", err)
-	}
-
-	return kv, nil
-}
-
 func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	ctx context.Context,
 	hostname string,

@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -363,28 +362,6 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 		hosts := keysToMove[kvp.Key]
 
 		pr.Logger.Warn().Str("new_holder", hosts[0]).Str("key", kvp.Key).Msg("moving to new holder")
-
-		remoteKVP, err := pr.remoteStorage.GetNoValue(ctx, hosts[0], kvp.Key)
-		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
-			remoteKVP = model.KVPair[V]{}
-		} else if err != nil {
-			pr.Logger.
-				Error().
-				Err(fmt.Errorf("getting key info from remote (%s): %w", hosts, err)).
-				Send()
-			continue
-		}
-
-		if remoteKVP.Modified.After(kvp.Modified) {
-			// newer version on remote
-			if err := pr.localStorage.Remove(kvp.Key); err != nil {
-				pr.Logger.
-					Error().
-					Err(fmt.Errorf("removing from local storage: %w", err)).
-					Send()
-			}
-			continue
-		}
 
 		fullLocalKVP, err := pr.localStorage.Get(kvp.Key)
 		if err != nil {
