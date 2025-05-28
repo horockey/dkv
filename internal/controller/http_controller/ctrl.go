@@ -6,17 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 	"sync"
 	"time"
 
-	"github.com/alitto/pond/v2"
 	"github.com/gorilla/mux"
 	"github.com/horockey/dkv/internal/controller/http_controller/dto"
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
 	"github.com/horockey/go-toolbox/http_helpers"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
@@ -27,8 +24,6 @@ type HttpController[V any] struct {
 	proc    *processor.Processor[V]
 	logger  zerolog.Logger
 	metrics *metrics
-	cache   *ttlcache.Cache[string, struct{}]
-	pool    pond.Pool
 }
 
 func New[V any](
@@ -46,11 +41,6 @@ func New[V any](
 		apiKey:  apiKey,
 		logger:  logger,
 		metrics: newMetrics(),
-		pool:    pond.NewPool(runtime.NumCPU() * 100), //nolint: mnd
-		cache: ttlcache.New(
-			ttlcache.WithCapacity[string, struct{}](10_000),    //nolint: mnd
-			ttlcache.WithTTL[string, struct{}](time.Second*10), //nolint: mnd
-		),
 	}
 
 	router := mux.NewRouter()
@@ -61,7 +51,7 @@ func New[V any](
 	router.HandleFunc("/kv/{key}", ctrl.getKVKeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/kv/{key}", ctrl.deleteKVKeyHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/kv", ctrl.postKVHandler).Methods(http.MethodPost)
-	router.Use(ctrl.authMW, ctrl.waitForPoolMW)
+	router.Use(ctrl.authMW)
 
 	ctrl.serv.Handler = router
 
@@ -88,15 +78,8 @@ func (ctrl *HttpController[V]) Start(ctx context.Context, pr *processor.Processo
 		}
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		ctrl.cache.Start()
-	}()
-
 	select {
 	case <-ctx.Done():
-		ctrl.cache.Stop()
 
 		if ctx.Err() != nil && !errors.Is(ctx.Err(), context.Canceled) {
 			resErr = errors.Join(resErr, fmt.Errorf("running context: %w", ctx.Err()))
@@ -122,13 +105,6 @@ func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 			ctrl.metrics.errProcessCnt.Inc()
 		}
 		next.ServeHTTP(w, req)
-	})
-}
-
-func (ctrl *HttpController[V]) waitForPoolMW(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		task := ctrl.pool.Submit(func() { next.ServeHTTP(w, req) })
-		<-task.Done()
 	})
 }
 
@@ -232,12 +208,6 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	if item := ctrl.cache.Get(dtoKV.Key); item != nil {
-		_ = http_helpers.RespondOK(w, nil)
-		ctrl.metrics.successProcessCnt.Inc()
-		return
-	}
-
 	kvp, err := dto.KVToModel[V](dtoKV)
 	if err != nil {
 		ctrl.logger.
@@ -270,6 +240,5 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 	}
 
 	_ = http_helpers.RespondOK(w, nil)
-	ctrl.cache.Set(kvp.Key, struct{}{}, ttlcache.DefaultTTL)
 	ctrl.metrics.successProcessCnt.Inc()
 }
