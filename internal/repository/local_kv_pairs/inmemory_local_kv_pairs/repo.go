@@ -24,9 +24,13 @@ type item[V any] struct {
 }
 
 func New[V any]() *inmemoryLocalKVPairs[V] {
-	return &inmemoryLocalKVPairs[V]{
+	repo := inmemoryLocalKVPairs[V]{
 		storage: map[string]*item[V]{},
 	}
+
+	repo.metrics = newMetrics(&repo)
+
+	return &repo
 }
 
 func (repo *inmemoryLocalKVPairs[V]) Get(key string) (res model.KVPair[V], resErr error) {
