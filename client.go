@@ -10,14 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger"
 	"github.com/horockey/dkv/internal/controller/http_controller"
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs/http_remote_kv_pairs"
 	"github.com/horockey/dkv/internal/model"
 	"github.com/horockey/dkv/internal/processor"
 	"github.com/horockey/dkv/internal/repository/local_kv_pairs"
-	"github.com/horockey/dkv/internal/repository/local_kv_pairs/badger_local_kv_pairs"
+	"github.com/horockey/dkv/internal/repository/local_kv_pairs/inmemory_local_kv_pairs"
 	"github.com/horockey/dkv/pkg/hashringx"
 	"github.com/horockey/go-toolbox/options"
 	"github.com/prometheus/client_golang/prometheus"
@@ -79,16 +78,7 @@ func NewClient[V any](
 	}
 
 	if params.localRepo == nil {
-		if err := os.MkdirAll(params.badgerDir, os.ModePerm); err != nil {
-			return nil, fmt.Errorf("creating badger dir: %w", err)
-		}
-
-		badgerDB, err := badger.Open(badger.DefaultOptions(params.badgerDir))
-		if err != nil {
-			return nil, fmt.Errorf("creating badger DB: %w", err)
-		}
-
-		params.localRepo = badger_local_kv_pairs.New[V](badgerDB, params.localRepoTombstonesTTL)
+		params.localRepo = inmemory_local_kv_pairs.New[V]()
 	}
 
 	if params.remoteRepo == nil {
