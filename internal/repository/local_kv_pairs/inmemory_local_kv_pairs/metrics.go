@@ -19,7 +19,9 @@ type metrics struct {
 
 func newMetrics[V any](repo *inmemoryLocalKVPairs[V]) *metrics {
 	const ss = "inmemory_local_kv_pairs"
-	sizeOfElement := binary.Size(reflect.ValueOf(*new(V)))
+
+	var v V
+	sizeOfElement := binary.Size(reflect.ValueOf(v))
 
 	return &metrics{
 		handleTimeHist: prometheus.NewHistogram(*prometheus_helpers.NewHistOpts(
