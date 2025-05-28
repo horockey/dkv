@@ -10,7 +10,9 @@ import (
 
 type metrics struct {
 	handleTimeHist     prometheus.Histogram
-	requestsCnt        prometheus.Counter
+	getRequestsCnt     prometheus.Counter
+	setRequestsCnt     prometheus.Counter
+	delRequestsCnt     prometheus.Counter
 	successProcessCnt  prometheus.Counter
 	errProcessCnt      prometheus.Counter
 	repoSizeItemsGauge prometheus.GaugeFunc
@@ -29,10 +31,20 @@ func newMetrics[V any](repo *inmemoryLocalKVPairs[V]) *metrics {
 			prometheus_helpers.HistOptsWithSubsystem(ss),
 			prometheus_helpers.HistOptsWithHelp("Handle time distribution"),
 		)),
-		requestsCnt: prometheus.NewCounter(prometheus.CounterOpts{
-			Name:      "requests_cnt",
+		getRequestsCnt: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:      "get_requests_cnt",
 			Subsystem: ss,
-			Help:      "Count of incoming requests",
+			Help:      "Count of incoming requests for kv read",
+		}),
+		setRequestsCnt: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:      "set_requests_cnt",
+			Subsystem: ss,
+			Help:      "Count of incoming requests for kv put",
+		}),
+		delRequestsCnt: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:      "del_requests_cnt",
+			Subsystem: ss,
+			Help:      "Count of incoming requests for kv del",
 		}),
 		successProcessCnt: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:      "success_responses_cnt",
@@ -64,7 +76,7 @@ func newMetrics[V any](repo *inmemoryLocalKVPairs[V]) *metrics {
 func (m *metrics) list() []prometheus.Collector {
 	return []prometheus.Collector{
 		m.handleTimeHist,
-		m.requestsCnt,
+		m.getRequestsCnt,
 		m.successProcessCnt,
 		m.errProcessCnt,
 		m.repoSizeItemsGauge,
