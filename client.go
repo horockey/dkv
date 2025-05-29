@@ -161,3 +161,11 @@ func (cl *Client[V]) Metrics() []prometheus.Collector {
 		cl.remoteRepo.Metrics(),
 	)
 }
+
+func (cl *Client[V]) AddOrUpdate(ctx context.Context, key string, value V) error {
+	return cl.Processor.AddOrUpdate(ctx, key, value, "") //nolint
+}
+
+func (cl *Client[V]) Remove(ctx context.Context, key string) error {
+	return cl.Processor.Remove(ctx, key, "") //nolint
+}
