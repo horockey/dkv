@@ -165,7 +165,9 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 		ctrl.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 	}(time.Now())
 
-	key, found := mux.Vars(req)["key"]
+	vars := mux.Vars(req)
+
+	key, found := vars["key"]
 	if !found {
 		err := errors.New("missing key")
 		ctrl.logger.Error().Err(err).Send()
@@ -174,7 +176,9 @@ func (ctrl *HttpController[V]) deleteKVKeyHandler(w http.ResponseWriter, req *ht
 		return
 	}
 
-	if err := ctrl.proc.Remove(req.Context(), key); err != nil {
+	req.URL.Query().Get("from")
+
+	if err := ctrl.proc.Remove(req.Context(), key, req.URL.Query().Get("from")); err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)
 			ctrl.metrics.errProcessCnt.Inc()
@@ -223,6 +227,7 @@ func (ctrl *HttpController[V]) postKVHandler(w http.ResponseWriter, req *http.Re
 		req.Context(),
 		kvp.Key,
 		kvp.Value,
+		dtoKV.From,
 	); err != nil {
 		if errors.Is(err, model.KeyNotFoundError{Key: kvp.Key}) {
 			_ = http_helpers.RespondWithErr(w, http.StatusNotFound, nil)

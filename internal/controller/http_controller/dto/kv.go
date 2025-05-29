@@ -14,6 +14,7 @@ type KV struct {
 	Key          string `json:"key"`
 	ValueB64     string `json:"value"`
 	ModifiedUnix int64  `json:"modified"`
+	From         string `json:"from"`
 }
 
 func KVToModel[V any](kv KV) (model.KVPair[V], error) {

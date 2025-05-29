@@ -19,19 +19,22 @@ import (
 var _ remote_kv_pairs.Gateway[any] = &httpRemoteKVPairs[any]{}
 
 type httpRemoteKVPairs[V any] struct {
-	cl      *resty.Client
-	metrics *metrics
-	logger  zerolog.Logger
+	cl       *resty.Client
+	metrics  *metrics
+	logger   zerolog.Logger
+	hostname string
 }
 
 func New[V any](
 	servicePort int,
 	apiKey string,
 	logger zerolog.Logger,
+	hostname string,
 ) *httpRemoteKVPairs[V] {
 	return &httpRemoteKVPairs[V]{
-		metrics: newMetrics(),
-		logger:  logger,
+		metrics:  newMetrics(),
+		logger:   logger,
+		hostname: hostname,
 		cl: resty.New().
 			SetPathParam("port", strconv.Itoa(servicePort)).
 			SetHeader("X-Api-Key", apiKey).
@@ -115,6 +118,7 @@ func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	if err != nil {
 		return fmt.Errorf("converting model kv to dto: %w", err)
 	}
+	dtoKVP.From = gw.hostname
 
 	resp, err := gw.cl.R().
 		SetContext(ctx).
@@ -154,6 +158,7 @@ func (gw *httpRemoteKVPairs[V]) Remove(ctx context.Context, hostname string, key
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
 		SetPathParam("key", key).
+		SetQueryParam("from", gw.hostname).
 		Delete("http://{hostname}:{port}/kv/{key}")
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)

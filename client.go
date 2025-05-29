@@ -86,6 +86,7 @@ func NewClient[V any](
 			params.servicePort,
 			apiKey,
 			params.logger.With().Str("scope", "remote GW").Logger(),
+			hostname,
 		)
 	}
 

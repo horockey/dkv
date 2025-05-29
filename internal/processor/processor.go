@@ -160,7 +160,7 @@ func (pr *Processor[V]) Get(ctx context.Context, key string) (model.KVPair[V], e
 	return kvp, nil
 }
 
-func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (resErr error) {
+func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V, from string) (resErr error) {
 	// put to self
 	// put to R replicas
 	// OR put via remote
@@ -219,7 +219,13 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 		Array("replicas", rs).
 		Send()
 
-	if owner != pr.hostname && !slices.Contains(replicas, pr.hostname) {
+	if owner == pr.hostname || slices.Contains(replicas, pr.hostname) {
+		if err := pr.localStorage.AddOrUpdate(kvp, pr.merger); err != nil {
+			return fmt.Errorf("setting to local repo: %w", err)
+		}
+	}
+
+	if owner != pr.hostname && from != owner {
 		if err := pr.remoteStorage.AddOrUpdate(ctx, owner, kvp); err != nil {
 			return fmt.Errorf("setting to remote repo (%s): %w", owner, err)
 		}
@@ -235,16 +241,6 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 	// }
 
 	// defer revertOnErr(append(replicas, owner))
-	if err := pr.localStorage.AddOrUpdate(kvp, pr.merger); err != nil {
-		return fmt.Errorf("setting to local repo: %w", err)
-	}
-
-	if owner != pr.hostname {
-		return nil
-	}
-
-	// prevent self-writing loop
-	replicas = lo.Filter(replicas, func(el string, _ int) bool { return el != pr.hostname })
 
 	for _, node := range replicas {
 		if err := pr.remoteStorage.AddOrUpdate(ctx, node, kvp); err != nil {
@@ -255,7 +251,7 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V) (r
 	return nil
 }
 
-func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
+func (pr *Processor[V]) Remove(ctx context.Context, key string, from string) (resErr error) {
 	// remove from self
 	// remove from R replicas
 	// OR remove via remote
@@ -291,14 +287,15 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 		return fmt.Errorf("unable to get owner and replicas for %s", key)
 	}
 
-	if pr.hostname != owner {
+	if owner == pr.hostname || slices.Contains(replicas, pr.hostname) {
+		if err := pr.localStorage.Remove(key); err != nil {
+			return fmt.Errorf("setting to local repo: %w", err)
+		}
+	}
+
+	if pr.hostname != owner && from != owner {
 		if err := pr.remoteStorage.Remove(ctx, owner, key); err != nil {
 			return fmt.Errorf("removing from remote repo (%s): %w", owner, err)
-		}
-		if slices.Contains(replicas, pr.hostname) {
-			if err := pr.localStorage.Remove(key); err != nil {
-				return fmt.Errorf("removing from local repo: %w", err)
-			}
 		}
 		return nil
 	}
