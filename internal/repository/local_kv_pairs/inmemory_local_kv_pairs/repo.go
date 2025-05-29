@@ -87,7 +87,7 @@ func (repo *inmemoryLocalKVPairs[V]) GetNoValue(key string) (res model.KVPair[V]
 }
 
 func (repo *inmemoryLocalKVPairs[V]) AddOrUpdate(kv model.KVPair[V], mf model.Merger[V]) (resErr error) {
-	repo.metrics.getRequestsCnt.Inc()
+	repo.metrics.setRequestsCnt.Inc()
 	defer func(ts time.Time) {
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 		switch resErr {
@@ -114,7 +114,7 @@ func (repo *inmemoryLocalKVPairs[V]) AddOrUpdate(kv model.KVPair[V], mf model.Me
 }
 
 func (repo *inmemoryLocalKVPairs[V]) Remove(key string) (resErr error) {
-	repo.metrics.getRequestsCnt.Inc()
+	repo.metrics.delRequestsCnt.Inc()
 	defer func(ts time.Time) {
 		repo.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
 		switch resErr {
