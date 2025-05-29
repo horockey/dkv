@@ -1,8 +1,7 @@
 package inmemory_local_kv_pairs
 
 import (
-	"encoding/binary"
-	"reflect"
+	"unsafe"
 
 	"github.com/horockey/go-toolbox/prometheus_helpers"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,7 +22,7 @@ func newMetrics[V any](repo *inmemoryLocalKVPairs[V]) *metrics {
 	const ss = "inmemory_local_kv_pairs"
 
 	var v V
-	sizeOfElement := binary.Size(reflect.ValueOf(v))
+	sizeOfElement := unsafe.Sizeof(v)
 
 	return &metrics{
 		handleTimeHist: prometheus.NewHistogram(*prometheus_helpers.NewHistOpts(
@@ -68,7 +67,7 @@ func newMetrics[V any](repo *inmemoryLocalKVPairs[V]) *metrics {
 			Subsystem: ss,
 			Help:      "actual size of repo in bytes",
 		}, func() float64 {
-			return float64(len(repo.storage) * sizeOfElement)
+			return float64(len(repo.storage) * int(sizeOfElement))
 		}),
 	}
 }
