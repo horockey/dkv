@@ -82,7 +82,11 @@ func NewClient[V any](
 	}
 
 	if params.remoteRepo == nil {
-		params.remoteRepo = http_remote_kv_pairs.New[V](params.servicePort, apiKey)
+		params.remoteRepo = http_remote_kv_pairs.New[V](
+			params.servicePort,
+			apiKey,
+			params.logger.With().Str("scope", "remote GW").Logger(),
+		)
 	}
 
 	if params.controller == nil {

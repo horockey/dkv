@@ -13,6 +13,7 @@ import (
 	"github.com/horockey/dkv/internal/gateway/remote_kv_pairs"
 	"github.com/horockey/dkv/internal/model"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 )
 
 var _ remote_kv_pairs.Gateway[any] = &httpRemoteKVPairs[any]{}
@@ -20,14 +21,17 @@ var _ remote_kv_pairs.Gateway[any] = &httpRemoteKVPairs[any]{}
 type httpRemoteKVPairs[V any] struct {
 	cl      *resty.Client
 	metrics *metrics
+	logger  zerolog.Logger
 }
 
 func New[V any](
 	servicePort int,
 	apiKey string,
+	logger zerolog.Logger,
 ) *httpRemoteKVPairs[V] {
 	return &httpRemoteKVPairs[V]{
 		metrics: newMetrics(),
+		logger:  logger,
 		cl: resty.New().
 			SetPathParam("port", strconv.Itoa(servicePort)).
 			SetHeader("X-Api-Key", apiKey).
@@ -44,6 +48,7 @@ func (gw *httpRemoteKVPairs[V]) Get(
 	hostname string,
 	key string,
 ) (res model.KVPair[V], resErr error) {
+	gw.logger.Debug().Str("key", key).Str("host", hostname).Msg("Getting KV from remote")
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
