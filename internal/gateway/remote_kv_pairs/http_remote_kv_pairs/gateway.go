@@ -49,6 +49,7 @@ func (gw *httpRemoteKVPairs[V]) Get(
 	key string,
 ) (res model.KVPair[V], resErr error) {
 	gw.logger.Debug().Str("key", key).Str("host", hostname).Msg("Getting KV from remote")
+
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -96,6 +97,8 @@ func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	hostname string,
 	kvp model.KVPair[V],
 ) (resErr error) {
+	gw.logger.Debug().Str("key", kvp.Key).Str("host", hostname).Msg("Setting KV from remote")
+
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
