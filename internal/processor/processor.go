@@ -295,15 +295,15 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string) (resErr error) {
 		if err := pr.remoteStorage.Remove(ctx, owner, key); err != nil {
 			return fmt.Errorf("removing from remote repo (%s): %w", owner, err)
 		}
+		if slices.Contains(replicas, pr.hostname) {
+			if err := pr.localStorage.Remove(key); err != nil {
+				return fmt.Errorf("removing from local repo: %w", err)
+			}
+		}
 		return nil
 	}
 
-	// processedNodes := []string{}
-
-	if err := pr.localStorage.Remove(key); err != nil {
-		return fmt.Errorf("removing from local repo: %w", err)
-	}
-	// processedNodes = append(processedNodes, owner)
+	// processedNodes := []string{pr.hostname}
 
 	for _, node := range replicas {
 		if err := pr.remoteStorage.Remove(ctx, node, key); err != nil {
