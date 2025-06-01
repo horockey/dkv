@@ -104,7 +104,9 @@ func (ctrl *HttpController[V]) authMW(next http.Handler) http.Handler {
 		if req.Header.Get("X-Api-Key") != ctrl.apiKey {
 			w.WriteHeader(http.StatusForbidden)
 			ctrl.metrics.errProcessCnt.Inc()
+			return
 		}
+
 		next.ServeHTTP(w, req)
 	})
 }
