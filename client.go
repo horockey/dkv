@@ -163,9 +163,9 @@ func (cl *Client[V]) Metrics() []prometheus.Collector {
 }
 
 func (cl *Client[V]) AddOrUpdate(ctx context.Context, key string, value V) error {
-	return cl.Processor.AddOrUpdate(ctx, key, value, "") //nolint
+	return cl.Processor.AddOrUpdate(ctx, key, value, []string{""}) //nolint
 }
 
 func (cl *Client[V]) Remove(ctx context.Context, key string) error {
-	return cl.Processor.Remove(ctx, key, "") //nolint
+	return cl.Processor.Remove(ctx, key, []string{""}) //nolint
 }

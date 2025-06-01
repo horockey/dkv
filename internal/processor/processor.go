@@ -160,7 +160,7 @@ func (pr *Processor[V]) Get(ctx context.Context, key string) (model.KVPair[V], e
 	return kvp, nil
 }
 
-func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V, from string) (resErr error) {
+func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V, processedOn []string) (resErr error) {
 	// put to self
 	// put to R replicas
 	// OR put via remote
@@ -225,8 +225,8 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V, fr
 		}
 	}
 
-	if owner != pr.hostname && from != owner {
-		if err := pr.remoteStorage.AddOrUpdate(ctx, owner, kvp); err != nil {
+	if owner != pr.hostname && !slices.Contains(processedOn, owner) {
+		if err := pr.remoteStorage.AddOrUpdate(ctx, owner, kvp, processedOn); err != nil {
 			return fmt.Errorf("setting to remote repo (%s): %w", owner, err)
 		}
 
@@ -243,7 +243,11 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V, fr
 	// defer revertOnErr(append(replicas, owner))
 
 	for _, node := range replicas {
-		if err := pr.remoteStorage.AddOrUpdate(ctx, node, kvp); err != nil {
+		if slices.Contains(processedOn, node) {
+			continue
+		}
+
+		if err := pr.remoteStorage.AddOrUpdate(ctx, node, kvp, processedOn); err != nil {
 			return fmt.Errorf("setting to remote repo (%s): %w", node, err)
 		}
 	}
@@ -251,7 +255,7 @@ func (pr *Processor[V]) AddOrUpdate(ctx context.Context, key string, value V, fr
 	return nil
 }
 
-func (pr *Processor[V]) Remove(ctx context.Context, key string, from string) (resErr error) {
+func (pr *Processor[V]) Remove(ctx context.Context, key string, processedOn []string) (resErr error) {
 	// remove from self
 	// remove from R replicas
 	// OR remove via remote
@@ -293,8 +297,8 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string, from string) (re
 		}
 	}
 
-	if pr.hostname != owner && from != owner {
-		if err := pr.remoteStorage.Remove(ctx, owner, key); err != nil {
+	if pr.hostname != owner && !slices.Contains(processedOn, owner) {
+		if err := pr.remoteStorage.Remove(ctx, owner, key, processedOn); err != nil {
 			return fmt.Errorf("removing from remote repo (%s): %w", owner, err)
 		}
 		return nil
@@ -303,7 +307,11 @@ func (pr *Processor[V]) Remove(ctx context.Context, key string, from string) (re
 	// processedNodes := []string{pr.hostname}
 
 	for _, node := range replicas {
-		if err := pr.remoteStorage.Remove(ctx, node, key); err != nil {
+		if slices.Contains(processedOn, node) {
+			continue
+		}
+
+		if err := pr.remoteStorage.Remove(ctx, node, key, processedOn); err != nil {
 			// defer revert(processedNodes, kvp)
 			return fmt.Errorf("removing from remote repo (%s): %w", node, err)
 		}
@@ -369,7 +377,7 @@ func (pr *Processor[V]) moveExtraKvpsToRemotes(ctx context.Context) {
 			continue
 		}
 
-		if err := pr.remoteStorage.AddOrUpdate(ctx, hosts[0], fullLocalKVP); err != nil {
+		if err := pr.remoteStorage.AddOrUpdate(ctx, hosts[0], fullLocalKVP, []string{}); err != nil {
 			pr.Logger.
 				Error().
 				Err(fmt.Errorf("putting kvp to remote: %w", err)).

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -99,6 +100,7 @@ func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	ctx context.Context,
 	hostname string,
 	kvp model.KVPair[V],
+	processedOn []string,
 ) (resErr error) {
 	gw.logger.Debug().Str("key", kvp.Key).Str("host", hostname).Msg("Setting KV from remote")
 
@@ -118,11 +120,11 @@ func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	if err != nil {
 		return fmt.Errorf("converting model kv to dto: %w", err)
 	}
-	dtoKVP.From = gw.hostname
 
 	resp, err := gw.cl.R().
 		SetContext(ctx).
 		SetPathParam("hostname", hostname).
+		SetHeader("X-Processed-On", strings.Join(append(processedOn, gw.hostname), ",")).
 		SetHeader("Content-Type", "application/json").
 		SetBody(dtoKVP).
 		Post("http://{hostname}:{port}/kv")
@@ -141,7 +143,12 @@ func (gw *httpRemoteKVPairs[V]) AddOrUpdate(
 	return nil
 }
 
-func (gw *httpRemoteKVPairs[V]) Remove(ctx context.Context, hostname string, key string) (resErr error) {
+func (gw *httpRemoteKVPairs[V]) Remove(
+	ctx context.Context,
+	hostname string,
+	key string,
+	processedOn []string,
+) (resErr error) {
 	defer func(ts time.Time) {
 		gw.metrics.requestsCnt.Inc()
 		gw.metrics.handleTimeHist.Observe(float64(time.Since(ts)))
@@ -156,6 +163,7 @@ func (gw *httpRemoteKVPairs[V]) Remove(ctx context.Context, hostname string, key
 
 	resp, err := gw.cl.R().
 		SetContext(ctx).
+		SetHeader("X-Processed-On", strings.Join(append(processedOn, gw.hostname), ",")).
 		SetPathParam("hostname", hostname).
 		SetPathParam("key", key).
 		SetQueryParam("from", gw.hostname).
